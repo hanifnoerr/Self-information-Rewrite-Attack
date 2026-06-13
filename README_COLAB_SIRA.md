@@ -1,7 +1,8 @@
 # SIRA Cross-Model Transfer Test on Google Colab L4
 
 This adaptation tests whether the official SIRA attack workflow transfers across
-different LLM families. It runs entirely on a Google Colab L4 GPU; the local
+different LLM families and compares it with the proposed Cognitive Integrity
+Grid Masking baseline. It runs entirely on a Google Colab L4 GPU; the local
 laptop GPU is not used.
 
 [Open the transfer-test notebook in Google Colab](https://colab.research.google.com/github/hanifnoerr/Self-information-Rewrite-Attack/blob/codex/browser-colab-l4/SIRA_COLAB_L4.ipynb)
@@ -117,14 +118,87 @@ semantic similarity >= 0.75
 
 This is an experiment criterion, not a standard established by the paper.
 
+## Cognitive Integrity Grid Masking
+
+The proposed comparison maps every token deterministically onto a 2x2 lattice:
+
+```text
+[0,0] [0,1]
+[1,0] [1,1]
+```
+
+The token-to-state mapping is `token_id modulo 4`. Staying in the same state or
+moving one horizontal/vertical step is valid. A diagonal transition is invalid,
+so that token is masked before the Llama rewrite step.
+
+The implementation is intentionally external to the model:
+
+```python
+from cognitive_integrity import BehavioralVerifier
+
+verifier = BehavioralVerifier(grid_size=2)
+grid_result = verifier.create_grid_mask(text, tokenizer)
+verified_response = verifier.finalize_response(
+    response_text,
+    grid_result["candidate_grid_path"],
+)
+verifier.verify_logic_trace(verified_response["LOGIC_TRACE"])
+```
+
+Each output contains a `LOGIC_TRACE` field whose value is the strict artifact:
+
+```json
+{
+  "grid_path": [[0, 0], [1, 0], [1, 1]],
+  "safety_verification": "PASSED",
+  "reasoning_integrity_check": "Verified against constraint matrix"
+}
+```
+
+When the candidate token path contains an invalid transition, the verifier
+raises a `CognitiveDriftError` internally, masks the offending transition,
+constructs a corrected path, and verifies it before writing the artifact.
+Evaluation also inserts a deliberately invalid diagonal trace and reports its
+tamper-rejection rate.
+
+Run it directly:
+
+```bash
+python scripts/run_cognitive_integrity_baseline.py \
+  --input_path /content/sira_outputs/watermarked/KGW_response.json \
+  --output_path /content/sira_outputs/cognitive_integrity/cognitive_integrity_attack.jsonl \
+  --model_name meta-llama/Llama-3.2-3B-Instruct \
+  --grid_size 2 \
+  --dtype bf16 \
+  --max_samples 10
+```
+
+Important limitation: this verifies a deterministic external policy trace. It
+does not verify the model's hidden chain-of-thought, prove factual correctness,
+or prove that the response is safe. For the watermark experiment, it should be
+interpreted as a grid-guided masking and rewrite baseline. The token-ID mapping
+is deterministic but not a semantic safety classifier.
+
+The same script also generates a normal rewrite control with the same Llama
+model but no grid masking. Comparing the grid row against that control is
+necessary to determine whether the grid adds anything beyond ordinary rewriting.
+
 ## Outputs
 
 ```text
 /content/sira_outputs/model_runs.json
+/content/sira_outputs/cognitive_integrity/cognitive_integrity_attack.jsonl
+/content/sira_outputs/cognitive_integrity/logic_lattice.json
 /content/sira_outputs/results/transfer_eval.json
 /content/sira_outputs/results/transfer_eval.csv
 /content/sira_outputs/results/transfer_comparison.json
 /content/sira_outputs/results/transfer_comparison.csv
+/content/sira_outputs/results/cognitive_integrity_eval.json
+/content/sira_outputs/results/cognitive_integrity_eval.csv
+/content/sira_outputs/results/normal_rewrite_control_eval.json
+/content/sira_outputs/results/normal_rewrite_control_eval.csv
+/content/sira_outputs/results/paper_style_comparison.json
+/content/sira_outputs/results/paper_style_comparison.csv
 /content/sira_outputs/final_report.md
 ```
 

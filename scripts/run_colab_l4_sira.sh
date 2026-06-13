@@ -49,6 +49,8 @@ FILES_TO_UPLOAD=(
   "scripts/attack.py"
   "scripts/prepare_colab_huggingface.py"
   "scripts/run_sira_model_l4.sh"
+  "scripts/cognitive_integrity.py"
+  "scripts/run_cognitive_integrity_baseline.py"
   "scripts/evaluate_sira_transfer.py"
   "scripts/compare_transfer_results.py"
   "scripts/write_environment.py"
@@ -69,6 +71,14 @@ export PYTHONPATH=/content/Self-information-Rewrite-Attack
 MODEL_NAME=meta-llama/Llama-3.2-3B-Instruct MODEL_LABEL=llama_3_2_3b LOAD_IN_4BIT=false ALGORITHM='${ALGORITHM}' SAMPLES='${SAMPLES}' bash scripts/run_sira_model_l4.sh
 MODEL_NAME=google/gemma-2-2b-it MODEL_LABEL=gemma_2_2b LOAD_IN_4BIT=false ALGORITHM='${ALGORITHM}' SAMPLES='${SAMPLES}' bash scripts/run_sira_model_l4.sh
 MODEL_NAME=Qwen/Qwen2.5-7B-Instruct MODEL_LABEL=qwen_2_5_7b LOAD_IN_4BIT=true ALGORITHM='${ALGORITHM}' SAMPLES='${SAMPLES}' bash scripts/run_sira_model_l4.sh
+
+python scripts/run_cognitive_integrity_baseline.py \
+  --input_path '/content/sira_outputs/watermarked/${ALGORITHM}_response.json' \
+  --output_path /content/sira_outputs/cognitive_integrity/cognitive_integrity_attack.jsonl \
+  --model_name meta-llama/Llama-3.2-3B-Instruct \
+  --grid_size 2 \
+  --dtype bf16 \
+  --max_samples '${SAMPLES}'
 
 cat > /content/sira_outputs/model_runs.json <<'JSON'
 [
@@ -111,6 +121,8 @@ python scripts/evaluate_sira_transfer.py \
   --algorithm '${ALGORITHM}' \
   --watermarked_input '/content/sira_outputs/watermarked/${ALGORITHM}_response.json' \
   --models_config /content/sira_outputs/model_runs.json \
+  --cognitive_input /content/sira_outputs/cognitive_integrity/cognitive_integrity_attack.jsonl \
+  --cognitive_grid_size 2 \
   --output_root /content/sira_outputs \
   --dtype bf16 \
   --max_samples '${SAMPLES}'

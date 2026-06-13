@@ -30,6 +30,12 @@ def show(value):
     return str(value)
 
 
+def subtract_if_measured(first_value, second_value):
+    if first_value is None or second_value is None:
+        return None
+    return first_value - second_value
+
+
 def save_csv(path, rows):
     fieldnames = []
     for row in rows:
@@ -83,14 +89,69 @@ def main():
     with open(os.path.join(results_dir, "transfer_comparison.json"), "w", encoding="utf-8") as output_file:
         json.dump(comparison_rows, output_file, indent=2)
 
+    sira_rows = [
+        row for row in comparison_rows
+        if row.get("method_type") == "SIRA"
+    ]
+    cognitive_row = next(
+        (row for row in comparison_rows if row.get("label") == "cognitive_integrity_grid"),
+        None,
+    )
+    control_row = next(
+        (row for row in comparison_rows if row.get("label") == "normal_rewrite_control"),
+        None,
+    )
     passing_non_llama = [
         row for row in comparison_rows
-        if row.get("model_family") != "Llama" and row["transfer_threshold_pass"]
+        if row.get("method_type") == "SIRA"
+        and row.get("model_family") != "Llama"
+        and row["transfer_threshold_pass"]
     ]
     tested_non_llama = [
         row for row in comparison_rows
-        if row.get("model_family") != "Llama"
+        if row.get("method_type") == "SIRA" and row.get("model_family") != "Llama"
     ]
+
+    paper_style_rows = []
+    for row in comparison_rows:
+        paper_asr = None
+        note = "Cross-model SIRA transfer test."
+        if row.get("method_type") == "SIRA" and row.get("model_family") == "Llama":
+            paper_asr = PAPER_TINY_ASR.get(args.algorithm)
+            note = "Released-code Llama reference; compare cautiously with paper SIRA-Tiny."
+        elif row.get("label") == "cognitive_integrity_grid":
+            note = (
+                "Grid-guided masking baseline. Trace verification measures structural "
+                "consistency, not hidden reasoning correctness or safety."
+            )
+        elif row.get("label") == "normal_rewrite_control":
+            note = "Same Llama rewrite model without grid masking."
+
+        reproduced_asr = row.get("attack_success_rate")
+        difference = None
+        if paper_asr is not None and reproduced_asr is not None:
+            difference = reproduced_asr - paper_asr
+
+        paper_style_rows.append(
+            {
+                "method": row.get("display_name"),
+                "watermark_algorithm": args.algorithm,
+                "paper_attack_success_rate": paper_asr,
+                "reproduced_attack_success_rate": reproduced_asr,
+                "difference": difference,
+                "semantic_similarity": row.get("semantic_similarity"),
+                "logic_trace_verification_rate": row.get("logic_trace_verification_rate"),
+                "cognitive_drift_rate": row.get("cognitive_drift_rate"),
+                "self_correction_rate": row.get("self_correction_rate"),
+                "tamper_rejection_rate": row.get("tamper_rejection_rate"),
+                "average_grid_mask_rate": row.get("average_grid_mask_rate"),
+                "note": note,
+            }
+        )
+
+    save_csv(os.path.join(results_dir, "paper_style_comparison.csv"), paper_style_rows)
+    with open(os.path.join(results_dir, "paper_style_comparison.json"), "w", encoding="utf-8") as output_file:
+        json.dump(paper_style_rows, output_file, indent=2)
 
     report_path = os.path.join(args.output_root, "final_report.md")
     with open(report_path, "w", encoding="utf-8") as report:
@@ -118,7 +179,7 @@ def main():
         )
 
         report.write("## Results\n\n")
-        report.write("| attack model | family | size | quantization | ASR | semantic similarity | average watermark score | failures | transfer criterion |\n")
+        report.write("| method | family | size | quantization | ASR | semantic similarity | average watermark score | failures | comparison criterion |\n")
         report.write("|---|---|---:|---|---:|---:|---:|---:|---|\n")
         for row in comparison_rows:
             report.write(
@@ -129,7 +190,13 @@ def main():
             )
         report.write("\n")
 
-        llama_result = next((row for row in comparison_rows if row.get("model_family") == "Llama"), None)
+        llama_result = next(
+            (
+                row for row in sira_rows
+                if row.get("model_family") == "Llama"
+            ),
+            None,
+        )
         paper_asr = PAPER_TINY_ASR.get(args.algorithm)
         report.write("## Paper Reference\n\n")
         if llama_result and llama_result.get("attack_success_rate") is not None and paper_asr is not None:
@@ -141,6 +208,71 @@ def main():
                 "- This is not an exact reproduction unless sample count, subset, hardware, "
                 "precision, package versions, and all generation settings match the paper.\n\n"
             )
+
+        report.write("## Cognitive Integrity Grid Baseline\n\n")
+        if cognitive_row:
+            report.write(
+                f"- Attack success rate: {show(cognitive_row.get('attack_success_rate'))}\n"
+            )
+            report.write(
+                f"- Semantic similarity: {show(cognitive_row.get('semantic_similarity'))}\n"
+            )
+            report.write(
+                f"- Logic trace verification rate: {show(cognitive_row.get('logic_trace_verification_rate'))}\n"
+            )
+            report.write(
+                f"- Cognitive drift rate: {show(cognitive_row.get('cognitive_drift_rate'))}\n"
+            )
+            report.write(
+                f"- Self-correction rate: {show(cognitive_row.get('self_correction_rate'))}\n"
+            )
+            report.write(
+                f"- Tampered trace rejection rate: {show(cognitive_row.get('tamper_rejection_rate'))}\n"
+            )
+            report.write(
+                f"- Average grid mask rate: {show(cognitive_row.get('average_grid_mask_rate'))}\n\n"
+            )
+            report.write(
+                "The grid artifact verifies an externally visible, deterministic token-state path. "
+                "It does not verify the model's hidden chain-of-thought, prove that the response is "
+                "safe, or turn the language model into a deterministic logic engine. Its watermark "
+                "result should be interpreted as a grid-guided masking and rewrite baseline.\n\n"
+            )
+            if control_row:
+                asr_difference = subtract_if_measured(
+                    cognitive_row.get("attack_success_rate"),
+                    control_row.get("attack_success_rate"),
+                )
+                similarity_difference = subtract_if_measured(
+                    cognitive_row.get("semantic_similarity"),
+                    control_row.get("semantic_similarity"),
+                )
+                report.write(f"- Normal rewrite control ASR: {show(control_row.get('attack_success_rate'))}\n")
+                report.write(
+                    f"- Grid ASR minus control ASR: {show(asr_difference)}\n"
+                )
+                report.write(
+                    f"- Grid similarity minus control similarity: {show(similarity_difference)}\n\n"
+                )
+                if asr_difference is not None and asr_difference > 0:
+                    report.write(
+                        "The grid-masked rewrite removed the watermark more often than the normal "
+                        "rewrite control in this run. Check the similarity difference before treating "
+                        "that as a useful improvement.\n\n"
+                    )
+                elif asr_difference is not None:
+                    report.write(
+                        "The grid-masked rewrite did not outperform the normal rewrite control on "
+                        "attack success in this run, so there is no evidence that the grid added a "
+                        "watermark-attack benefit.\n\n"
+                    )
+                else:
+                    report.write(
+                        "The grid and normal rewrite outputs could not be compared because attack "
+                        "success was not measured for both rows.\n\n"
+                    )
+        else:
+            report.write("The Cognitive Integrity Grid baseline was not evaluated.\n\n")
 
         report.write("## Honest Conclusion\n\n")
         if tested_non_llama and len(passing_non_llama) == len(tested_non_llama):
@@ -161,6 +293,7 @@ def main():
             )
 
     print(f"Saved transfer comparison: {os.path.join(results_dir, 'transfer_comparison.csv')}")
+    print(f"Saved paper-style comparison: {os.path.join(results_dir, 'paper_style_comparison.csv')}")
     print(f"Final report: {report_path}")
 
 

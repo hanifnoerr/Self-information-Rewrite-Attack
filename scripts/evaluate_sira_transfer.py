@@ -7,6 +7,7 @@ import time
 import torch
 from sentence_transformers import SentenceTransformer
 
+from cognitive_integrity import BehavioralVerifier, CognitiveDriftError
 from model_utils import load_model_and_tokenizer
 from utils.transformers_config import TransformersConfig
 from watermark.auto_watermark import AutoWatermark
@@ -85,6 +86,48 @@ def evaluate_items(items, text_field, watermark, similarity_model):
     }
 
 
+def evaluate_cognitive_artifacts(items, grid_size):
+    verifier = BehavioralVerifier(grid_size=grid_size)
+    verified_traces = 0
+    drift_samples = 0
+    corrected_samples = 0
+    rejected_tampered_traces = 0
+    mask_rates = []
+
+    for item in items:
+        try:
+            verifier.verify_logic_trace(item.get("LOGIC_TRACE"))
+            verified_traces += 1
+        except CognitiveDriftError:
+            pass
+
+        tampered_trace = {
+            "grid_path": [[0, 0], [grid_size - 1, grid_size - 1]],
+            "safety_verification": "PASSED",
+            "reasoning_integrity_check": "Verified against constraint matrix",
+        }
+        try:
+            verifier.verify_logic_trace(tampered_trace)
+        except CognitiveDriftError:
+            rejected_tampered_traces += 1
+
+        if item.get("cognitive_drift_detected"):
+            drift_samples += 1
+        if item.get("self_correction_performed"):
+            corrected_samples += 1
+        if isinstance(item.get("mask_rate"), (int, float)):
+            mask_rates.append(float(item["mask_rate"]))
+
+    sample_count = len(items)
+    return {
+        "logic_trace_verification_rate": verified_traces / sample_count if sample_count else None,
+        "cognitive_drift_rate": drift_samples / sample_count if sample_count else None,
+        "self_correction_rate": corrected_samples / sample_count if sample_count else None,
+        "tamper_rejection_rate": rejected_tampered_traces / sample_count if sample_count else None,
+        "average_grid_mask_rate": sum(mask_rates) / len(mask_rates) if mask_rates else None,
+    }
+
+
 def save_json(path, data):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as output_file:
@@ -113,6 +156,10 @@ def main():
     parser.add_argument("--algorithm", default="KGW")
     parser.add_argument("--watermarked_input", required=True)
     parser.add_argument("--models_config", required=True)
+    parser.add_argument("--cognitive_input", default="")
+    parser.add_argument("--cognitive_model", default="meta-llama/Llama-3.2-3B-Instruct")
+    parser.add_argument("--cognitive_quantization", default="bf16")
+    parser.add_argument("--cognitive_grid_size", type=int, default=2)
     parser.add_argument("--output_root", default="/content/sira_outputs")
     parser.add_argument("--similarity_model", default="sentence-transformers/all-MiniLM-L6-v2")
     parser.add_argument("--dtype", choices=["auto", "fp16", "bf16"], default="auto")
@@ -160,11 +207,65 @@ def main():
 
         print(f"Evaluating {model_run['display_name']}: {len(attack_items)} samples")
         result = evaluate_items(attack_items, "attack_text", watermark, similarity_model)
-        results.append({**model_run, **result})
+        results.append({"method_type": "SIRA", **model_run, **result})
+
+    cognitive_record = None
+    control_record = None
+    cognitive_items = read_jsonl(args.cognitive_input, args.max_samples)
+    if cognitive_items:
+        print(f"Evaluating Cognitive Integrity Grid Masking: {len(cognitive_items)} samples")
+        cognitive_result = evaluate_items(
+            cognitive_items,
+            "attack_text",
+            watermark,
+            similarity_model,
+        )
+        cognitive_artifacts = evaluate_cognitive_artifacts(
+            cognitive_items,
+            args.cognitive_grid_size,
+        )
+        cognitive_record = {
+            "label": "cognitive_integrity_grid",
+            "display_name": "Cognitive Integrity Grid Masking",
+            "method_type": "Grid-guided masking baseline",
+            "model_family": "Llama rewrite model",
+            "model_name": args.cognitive_model,
+            "parameter_size": "3B",
+            "quantization": args.cognitive_quantization,
+            "attack_path": args.cognitive_input,
+            **cognitive_result,
+            **cognitive_artifacts,
+        }
+        results.append(cognitive_record)
+
+        control_result = evaluate_items(
+            cognitive_items,
+            "control_text",
+            watermark,
+            similarity_model,
+        )
+        control_record = {
+            "label": "normal_rewrite_control",
+            "display_name": "Normal Rewrite Control",
+            "method_type": "Rewrite control",
+            "model_family": "Llama rewrite model",
+            "model_name": args.cognitive_model,
+            "parameter_size": "3B",
+            "quantization": args.cognitive_quantization,
+            "attack_path": args.cognitive_input,
+            **control_result,
+        }
+        results.append(control_record)
 
     results_dir = os.path.join(args.output_root, "results")
     save_json(os.path.join(results_dir, "transfer_eval.json"), results)
     save_csv(os.path.join(results_dir, "transfer_eval.csv"), results)
+    if cognitive_record:
+        save_json(os.path.join(results_dir, "cognitive_integrity_eval.json"), cognitive_record)
+        save_csv(os.path.join(results_dir, "cognitive_integrity_eval.csv"), [cognitive_record])
+    if control_record:
+        save_json(os.path.join(results_dir, "normal_rewrite_control_eval.json"), control_record)
+        save_csv(os.path.join(results_dir, "normal_rewrite_control_eval.csv"), [control_record])
 
     print(f"Saved transfer evaluation under: {results_dir}")
 
