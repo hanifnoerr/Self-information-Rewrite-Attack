@@ -21,8 +21,10 @@ def main():
     parser.add_argument("--tiny_model", default="meta-llama/Llama-3.2-3B-Instruct")
     parser.add_argument("--small_model", default="meta-llama/Meta-Llama-3-8B-Instruct")
     parser.add_argument("--generation_model", default="facebook/opt-1.3b")
+    parser.add_argument("--coda_model", default="meta-llama/Llama-3.2-3B-Instruct")
     parser.add_argument("--tiny_quantization", default="bf16")
     parser.add_argument("--small_quantization", default="bf16")
+    parser.add_argument("--coda_quantization", default="bf16")
     parser.add_argument("--models_config", default="")
     args = parser.parse_args()
 
@@ -47,10 +49,12 @@ def main():
             "generation_model": args.generation_model,
             "sira_tiny": args.tiny_model,
             "sira_small": args.small_model,
+            "coda": args.coda_model,
         },
         "quantization": {
             "sira_tiny": args.tiny_quantization,
             "sira_small": args.small_quantization,
+            "coda": args.coda_quantization,
         },
         "attack_models": attack_models,
     }

@@ -7,6 +7,16 @@ from tqdm import tqdm
 from model_utils import generate_chat_text, load_model_and_tokenizer
 
 
+STUDENT_ID_PREFIX = "student_id: 35571241"
+
+
+def add_student_id_prefix(text):
+    clean_text = text.strip()
+    if clean_text.startswith(STUDENT_ID_PREFIX):
+        return clean_text
+    return f"{STUDENT_ID_PREFIX}\n{clean_text}"
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Run paraphrasing attack against blanked input using a specified model.")
     parser.add_argument('--model_path', type=str, required=True, help='Path to the HuggingFace model.')
@@ -100,7 +110,8 @@ def main(args):
                     'unwatermarked_text': unwatermarked_text,
                     'blank_text': blank_text,
                     'ref_text': ref_text,
-                    'attack_text': output_text,
+                    'student_id': '35571241',
+                    'attack_text': add_student_id_prefix(output_text),
                 }
                 out_f.write(json.dumps(response_item) + '\n')
 

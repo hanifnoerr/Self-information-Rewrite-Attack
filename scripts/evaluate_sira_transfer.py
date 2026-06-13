@@ -7,7 +7,6 @@ import time
 import torch
 from sentence_transformers import SentenceTransformer
 
-from cognitive_integrity import BehavioralVerifier, CognitiveDriftError
 from model_utils import load_model_and_tokenizer
 from utils.transformers_config import TransformersConfig
 from watermark.auto_watermark import AutoWatermark
@@ -55,12 +54,15 @@ def evaluate_items(items, text_field, watermark, similarity_model):
     scores = []
     watermarked_flags = []
     failed_samples = 0
+    prefixed_samples = 0
 
     for item in items:
         text = item.get(text_field, "")
         if not text:
             failed_samples += 1
             continue
+        if text.startswith("student_id: 35571241"):
+            prefixed_samples += 1
 
         try:
             result = watermark.detect_watermark(text, return_dict=True)
@@ -82,49 +84,30 @@ def evaluate_items(items, text_field, watermark, similarity_model):
         "number_of_samples": len(items),
         "evaluated_samples": evaluated_samples,
         "failed_samples": failed_samples,
+        "student_id_prefix_rate": prefixed_samples / len(items) if items else None,
         "runtime_seconds": time.time() - start_time,
     }
 
 
-def evaluate_cognitive_artifacts(items, grid_size):
-    verifier = BehavioralVerifier(grid_size=grid_size)
-    verified_traces = 0
-    drift_samples = 0
-    corrected_samples = 0
-    rejected_tampered_traces = 0
-    mask_rates = []
+def evaluate_coda_artifacts(items):
+    anchor_counts = []
+    anchor_rates = []
+    suspicious_counts = []
 
     for item in items:
-        try:
-            verifier.verify_logic_trace(item.get("LOGIC_TRACE"))
-            verified_traces += 1
-        except CognitiveDriftError:
-            pass
+        if isinstance(item.get("anchor_count"), (int, float)):
+            anchor_counts.append(float(item["anchor_count"]))
+        if isinstance(item.get("anchor_rate"), (int, float)):
+            anchor_rates.append(float(item["anchor_rate"]))
+        if isinstance(item.get("suspicious_token_count"), (int, float)):
+            suspicious_counts.append(float(item["suspicious_token_count"]))
 
-        tampered_trace = {
-            "grid_path": [[0, 0], [grid_size - 1, grid_size - 1]],
-            "safety_verification": "PASSED",
-            "reasoning_integrity_check": "Verified against constraint matrix",
-        }
-        try:
-            verifier.verify_logic_trace(tampered_trace)
-        except CognitiveDriftError:
-            rejected_tampered_traces += 1
-
-        if item.get("cognitive_drift_detected"):
-            drift_samples += 1
-        if item.get("self_correction_performed"):
-            corrected_samples += 1
-        if isinstance(item.get("mask_rate"), (int, float)):
-            mask_rates.append(float(item["mask_rate"]))
-
-    sample_count = len(items)
     return {
-        "logic_trace_verification_rate": verified_traces / sample_count if sample_count else None,
-        "cognitive_drift_rate": drift_samples / sample_count if sample_count else None,
-        "self_correction_rate": corrected_samples / sample_count if sample_count else None,
-        "tamper_rejection_rate": rejected_tampered_traces / sample_count if sample_count else None,
-        "average_grid_mask_rate": sum(mask_rates) / len(mask_rates) if mask_rates else None,
+        "average_anchor_count": sum(anchor_counts) / len(anchor_counts) if anchor_counts else None,
+        "average_anchor_rate": sum(anchor_rates) / len(anchor_rates) if anchor_rates else None,
+        "average_suspicious_token_count": (
+            sum(suspicious_counts) / len(suspicious_counts) if suspicious_counts else None
+        ),
     }
 
 
@@ -132,6 +115,13 @@ def save_json(path, data):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as output_file:
         json.dump(data, output_file, indent=2, ensure_ascii=False)
+
+
+def save_jsonl(path, items):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as output_file:
+        for item in items:
+            output_file.write(json.dumps(item, ensure_ascii=False) + "\n")
 
 
 def save_csv(path, rows):
@@ -156,10 +146,9 @@ def main():
     parser.add_argument("--algorithm", default="KGW")
     parser.add_argument("--watermarked_input", required=True)
     parser.add_argument("--models_config", required=True)
-    parser.add_argument("--cognitive_input", default="")
-    parser.add_argument("--cognitive_model", default="meta-llama/Llama-3.2-3B-Instruct")
-    parser.add_argument("--cognitive_quantization", default="bf16")
-    parser.add_argument("--cognitive_grid_size", type=int, default=2)
+    parser.add_argument("--coda_input", default="")
+    parser.add_argument("--coda_model", default="meta-llama/Llama-3.2-3B-Instruct")
+    parser.add_argument("--coda_quantization", default="bf16")
     parser.add_argument("--output_root", default="/content/sira_outputs")
     parser.add_argument("--similarity_model", default="sentence-transformers/all-MiniLM-L6-v2")
     parser.add_argument("--dtype", choices=["auto", "fp16", "bf16"], default="auto")
@@ -199,6 +188,37 @@ def main():
         }
     )
 
+    prefix_only_items = [
+        {
+            **item,
+            "attack_text": f"student_id: 35571241\n{item.get('watermarked_text', '')}",
+        }
+        for item in original_items
+    ]
+    prefix_only_path = os.path.join(
+        args.output_root,
+        "student_id_prefix_only",
+        "prefix_only.jsonl",
+    )
+    save_jsonl(prefix_only_path, prefix_only_items)
+    prefix_only_result = evaluate_items(
+        prefix_only_items,
+        "attack_text",
+        watermark,
+        similarity_model,
+    )
+    prefix_only_record = {
+        "label": "student_id_prefix_only",
+        "display_name": "Student-ID Prefix Only",
+        "method_type": "Prefix-only control",
+        "model_family": "N/A",
+        "model_name": "No rewrite model",
+        "parameter_size": "N/A",
+        "size_tier": "Control",
+        "quantization": "N/A",
+        "attack_path": prefix_only_path,
+        **prefix_only_result,
+    }
     for model_run in model_runs:
         attack_items = []
         if model_run.get("run_status") in {None, "completed"}:
@@ -224,63 +244,42 @@ def main():
         result = evaluate_items(attack_items, "attack_text", watermark, similarity_model)
         results.append({"method_type": "SIRA", **model_run, **result})
 
-    cognitive_record = None
-    control_record = None
-    cognitive_items = read_jsonl(args.cognitive_input, args.max_samples)
-    if cognitive_items:
-        print(f"Evaluating Cognitive Integrity Grid Masking: {len(cognitive_items)} samples")
-        cognitive_result = evaluate_items(
-            cognitive_items,
+    coda_record = None
+    coda_items = read_jsonl(args.coda_input, args.max_samples)
+    if coda_items:
+        print(f"Evaluating CoDA: {len(coda_items)} samples")
+        coda_result = evaluate_items(
+            coda_items,
             "attack_text",
             watermark,
             similarity_model,
         )
-        cognitive_artifacts = evaluate_cognitive_artifacts(
-            cognitive_items,
-            args.cognitive_grid_size,
-        )
-        cognitive_record = {
-            "label": "cognitive_integrity_grid",
-            "display_name": "Cognitive Integrity Grid Masking",
-            "method_type": "Grid-guided masking baseline",
-            "model_family": "Llama rewrite model",
-            "model_name": args.cognitive_model,
+        coda_artifacts = evaluate_coda_artifacts(coda_items)
+        coda_record = {
+            "label": "coda",
+            "display_name": "CoDA - Context-Anchor Desynchronization Attack",
+            "method_type": "CoDA",
+            "model_family": "Llama",
+            "model_name": args.coda_model,
             "parameter_size": "3B",
-            "quantization": args.cognitive_quantization,
-            "attack_path": args.cognitive_input,
-            **cognitive_result,
-            **cognitive_artifacts,
+            "size_tier": "Proposed method",
+            "quantization": args.coda_quantization,
+            "attack_path": args.coda_input,
+            **coda_result,
+            **coda_artifacts,
         }
-        results.append(cognitive_record)
+        results.append(coda_record)
 
-        control_result = evaluate_items(
-            cognitive_items,
-            "control_text",
-            watermark,
-            similarity_model,
-        )
-        control_record = {
-            "label": "normal_rewrite_control",
-            "display_name": "Normal Rewrite Control",
-            "method_type": "Rewrite control",
-            "model_family": "Llama rewrite model",
-            "model_name": args.cognitive_model,
-            "parameter_size": "3B",
-            "quantization": args.cognitive_quantization,
-            "attack_path": args.cognitive_input,
-            **control_result,
-        }
-        results.append(control_record)
+    results.append(prefix_only_record)
 
     results_dir = os.path.join(args.output_root, "results")
     save_json(os.path.join(results_dir, "transfer_eval.json"), results)
     save_csv(os.path.join(results_dir, "transfer_eval.csv"), results)
-    if cognitive_record:
-        save_json(os.path.join(results_dir, "cognitive_integrity_eval.json"), cognitive_record)
-        save_csv(os.path.join(results_dir, "cognitive_integrity_eval.csv"), [cognitive_record])
-    if control_record:
-        save_json(os.path.join(results_dir, "normal_rewrite_control_eval.json"), control_record)
-        save_csv(os.path.join(results_dir, "normal_rewrite_control_eval.csv"), [control_record])
+    save_json(os.path.join(results_dir, "student_id_prefix_only_eval.json"), prefix_only_record)
+    save_csv(os.path.join(results_dir, "student_id_prefix_only_eval.csv"), [prefix_only_record])
+    if coda_record:
+        save_json(os.path.join(results_dir, "coda_eval.json"), coda_record)
+        save_csv(os.path.join(results_dir, "coda_eval.csv"), [coda_record])
 
     print(f"Saved transfer evaluation under: {results_dir}")
 

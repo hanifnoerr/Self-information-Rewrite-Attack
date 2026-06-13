@@ -55,17 +55,6 @@
     "loader_type": "processor_causal"
   },
   {
-    "label": "gemma_4_26b_a4b",
-    "display_name": "Gemma 4 26B A4B IT",
-    "model_family": "Gemma 4",
-    "model_name": "google/gemma-4-26B-A4B-it",
-    "parameter_size": "26B total / A4B active",
-    "size_tier": "large",
-    "quantization": "4-bit NF4 with bf16 compute",
-    "load_in_4bit": true,
-    "loader_type": "processor_causal"
-  },
-  {
     "label": "qwen_2_5_0_5b",
     "display_name": "Qwen 2.5 0.5B Instruct",
     "model_family": "Qwen",

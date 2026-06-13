@@ -18,7 +18,7 @@ def main():
     parser.add_argument("--repo_dir", default="/content/Self-information-Rewrite-Attack")
     parser.add_argument("--output_root", default="/content/sira_outputs")
     parser.add_argument("--algorithm", default="KGW")
-    parser.add_argument("--samples", type=int, default=3)
+    parser.add_argument("--samples", type=int, default=10)
     args = parser.parse_args()
 
     with open(args.config_path, "r", encoding="utf-8") as input_file:

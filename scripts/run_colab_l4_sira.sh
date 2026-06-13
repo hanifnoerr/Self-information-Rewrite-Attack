@@ -5,7 +5,7 @@ SESSION_NAME="sira-l4"
 LOCAL_REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCAL_OUTPUT="${LOCAL_REPO}/sira_outputs"
 LOCAL_LOG_DIR="${LOCAL_OUTPUT}/logs"
-SAMPLES="${SAMPLES:-3}"
+SAMPLES="${SAMPLES:-10}"
 ALGORITHM="${ALGORITHM:-KGW}"
 
 mkdir -p "${LOCAL_LOG_DIR}"
@@ -53,8 +53,7 @@ FILES_TO_UPLOAD=(
   "scripts/prepare_colab_huggingface.py"
   "scripts/run_sira_model_l4.sh"
   "scripts/run_model_matrix_l4.py"
-  "scripts/cognitive_integrity.py"
-  "scripts/run_cognitive_integrity_baseline.py"
+  "scripts/run_coda_attack.py"
   "scripts/evaluate_sira_transfer.py"
   "scripts/compare_transfer_results.py"
   "scripts/write_environment.py"
@@ -79,13 +78,13 @@ python scripts/run_model_matrix_l4.py \
   --algorithm '${ALGORITHM}' \
   --samples '${SAMPLES}'
 
-python scripts/run_cognitive_integrity_baseline.py \
+python scripts/run_coda_attack.py \
   --input_path '/content/sira_outputs/watermarked/${ALGORITHM}_response.json' \
-  --output_path /content/sira_outputs/cognitive_integrity/cognitive_integrity_attack.jsonl \
+  --output_path /content/sira_outputs/coda/coda_attack.jsonl \
   --model_name meta-llama/Llama-3.2-3B-Instruct \
-  --grid_size 2 \
+  --threshold 30 \
   --dtype bf16 \
-  --max_samples '${SAMPLES}' || true
+  --max_samples '${SAMPLES}'
 
 python scripts/write_environment.py \
   --output_path /content/sira_outputs/environment.json \
@@ -96,8 +95,7 @@ python scripts/evaluate_sira_transfer.py \
   --algorithm '${ALGORITHM}' \
   --watermarked_input '/content/sira_outputs/watermarked/${ALGORITHM}_response.json' \
   --models_config /content/sira_outputs/model_runs.json \
-  --cognitive_input /content/sira_outputs/cognitive_integrity/cognitive_integrity_attack.jsonl \
-  --cognitive_grid_size 2 \
+  --coda_input /content/sira_outputs/coda/coda_attack.jsonl \
   --output_root /content/sira_outputs \
   --dtype bf16 \
   --max_samples '${SAMPLES}'

@@ -8,6 +8,16 @@ import transformers
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
+STUDENT_ID_PREFIX = "student_id: 35571241"
+
+
+def add_student_id_prefix(text):
+    clean_text = text.strip()
+    if clean_text.startswith(STUDENT_ID_PREFIX):
+        return clean_text
+    return f"{STUDENT_ID_PREFIX}\n{clean_text}"
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Run paraphrasing, self-information blanking, and attack pipeline.")
     # Directories
@@ -323,7 +333,8 @@ def main():
 
 
                     response_item = item.copy()
-                    response_item['attack_text'] = generated_content_attack
+                    response_item['student_id'] = '35571241'
+                    response_item['attack_text'] = add_student_id_prefix(generated_content_attack)
                     out_f_s3.write(json.dumps(response_item) + '\n')
                 except json.JSONDecodeError:
                     print(f"[S3 Error] Could not parse JSON from line in {input_file_s3} during Stage 3 for {algorithm}. Skipping.")

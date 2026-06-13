@@ -51,7 +51,7 @@ def show(value):
 def subtract_if_measured(first_value, second_value):
     if first_value is None or second_value is None:
         return None
-    return first_value - second_value
+    return round(first_value - second_value, 6)
 
 
 def save_csv(path, rows):
@@ -115,12 +115,12 @@ def main():
     paper_reproduction_mode = bool(sira_labels) and sira_labels.issubset(
         {"llama_3_2_3b", "llama_3_8b"}
     )
-    cognitive_row = next(
-        (row for row in comparison_rows if row.get("label") == "cognitive_integrity_grid"),
+    coda_row = next(
+        (row for row in comparison_rows if row.get("label") == "coda"),
         None,
     )
-    control_row = next(
-        (row for row in comparison_rows if row.get("label") == "normal_rewrite_control"),
+    prefix_only_row = next(
+        (row for row in comparison_rows if row.get("label") == "student_id_prefix_only"),
         None,
     )
     passing_non_llama = [
@@ -138,30 +138,34 @@ def main():
     ]
 
     paper_style_rows = []
+    prefix_only_asr = (
+        prefix_only_row.get("attack_success_rate") if prefix_only_row else None
+    )
     for row in comparison_rows:
         paper_method, paper_asr = get_paper_reference(row.get("label"), args.algorithm)
         note = "Cross-model SIRA transfer test."
         if paper_method:
             note = (
-                f"Released-code checkpoint for paper {paper_method}; compare cautiously unless "
-                "all paper settings match."
+                f"Released-code checkpoint for paper {paper_method}; required student-ID prefix "
+                "and other setting differences prevent an exact comparison."
             )
-        elif row.get("label") == "cognitive_integrity_grid":
+        elif row.get("label") == "coda":
             note = (
-                "Grid-guided masking baseline. Trace verification measures structural "
-                "consistency, not hidden reasoning correctness or safety."
+                "Proposed CoDA method. It changes low-information anchor tokens before "
+                "high-information targets; it was not evaluated by the paper."
             )
-        elif row.get("label") == "normal_rewrite_control":
-            note = "Same Llama rewrite model without grid masking."
+        elif row.get("label") == "student_id_prefix_only":
+            note = (
+                "Control that adds the required student-ID prefix to untouched watermarked text. "
+                "It isolates the prefix effect."
+            )
         if row.get("run_status") in {"skipped_access", "failed"}:
             error_lines = row.get("run_error", "").splitlines()
             error_summary = error_lines[0] if error_lines else "No error details recorded."
             note = f"{row.get('run_status')}: {error_summary}"
 
         reproduced_asr = row.get("attack_success_rate")
-        difference = None
-        if paper_asr is not None and reproduced_asr is not None:
-            difference = reproduced_asr - paper_asr
+        difference = subtract_if_measured(reproduced_asr, paper_asr)
 
         paper_style_rows.append(
             {
@@ -176,12 +180,13 @@ def main():
                 "paper_attack_success_rate": paper_asr,
                 "reproduced_attack_success_rate": reproduced_asr,
                 "difference": difference,
+                "prefix_only_attack_success_rate": prefix_only_asr,
+                "asr_minus_prefix_only": subtract_if_measured(reproduced_asr, prefix_only_asr),
                 "semantic_similarity": row.get("semantic_similarity"),
-                "logic_trace_verification_rate": row.get("logic_trace_verification_rate"),
-                "cognitive_drift_rate": row.get("cognitive_drift_rate"),
-                "self_correction_rate": row.get("self_correction_rate"),
-                "tamper_rejection_rate": row.get("tamper_rejection_rate"),
-                "average_grid_mask_rate": row.get("average_grid_mask_rate"),
+                "average_anchor_count": row.get("average_anchor_count"),
+                "average_anchor_rate": row.get("average_anchor_rate"),
+                "average_suspicious_token_count": row.get("average_suspicious_token_count"),
+                "student_id_prefix_rate": row.get("student_id_prefix_rate"),
                 "note": note,
             }
         )
@@ -200,7 +205,8 @@ def main():
         if paper_reproduction_mode:
             report.write(
                 "Compare the released-code SIRA-Tiny and SIRA-Small Llama checkpoints against "
-                "the attack success rates reported by the paper.\n\n"
+                "the attack success rates reported by the paper, then compare the proposed CoDA "
+                "anchor-desynchronization attack against them.\n\n"
             )
         else:
             report.write(
@@ -214,6 +220,7 @@ def main():
         report.write(f"- Samples: {args.samples}\n")
         report.write("- Shared watermarked data: OPT-1.3B generation on the same C4 subset\n")
         report.write("- SIRA threshold: 30\n")
+        report.write("- Every attacked response begins with: student_id: 35571241\n")
         if paper_reproduction_mode:
             report.write("- Attack models: paper SIRA-Tiny 3B and SIRA-Small 8B configurations\n")
         else:
@@ -226,6 +233,11 @@ def main():
             "Model size and quantization are recorded because they are possible confounders. "
             "In particular, a 4-bit result should not be treated as a precision-controlled "
             "comparison with a bf16 result.\n\n"
+        )
+        report.write(
+            "The required student-ID prefix is also a comparison confounder because the paper "
+            "did not add it. It is applied consistently to every reproduced attack response, "
+            "but paper comparisons must still be interpreted cautiously.\n\n"
         )
         if paper_reproduction_mode:
             report.write(
@@ -273,72 +285,86 @@ def main():
                 "precision, package versions, and all generation settings match the paper.\n\n"
             )
 
-        report.write("## Cognitive Integrity Grid Baseline\n\n")
-        if cognitive_row:
+        report.write("## CoDA Proposed Attack\n\n")
+        if coda_row:
             report.write(
-                f"- Attack success rate: {show(cognitive_row.get('attack_success_rate'))}\n"
+                f"- Attack success rate: {show(coda_row.get('attack_success_rate'))}\n"
             )
             report.write(
-                f"- Semantic similarity: {show(cognitive_row.get('semantic_similarity'))}\n"
+                f"- Semantic similarity: {show(coda_row.get('semantic_similarity'))}\n"
             )
             report.write(
-                f"- Logic trace verification rate: {show(cognitive_row.get('logic_trace_verification_rate'))}\n"
+                f"- Average suspicious-token count: {show(coda_row.get('average_suspicious_token_count'))}\n"
             )
             report.write(
-                f"- Cognitive drift rate: {show(cognitive_row.get('cognitive_drift_rate'))}\n"
+                f"- Average changed-anchor count: {show(coda_row.get('average_anchor_count'))}\n"
             )
             report.write(
-                f"- Self-correction rate: {show(cognitive_row.get('self_correction_rate'))}\n"
+                f"- Average anchor rate: {show(coda_row.get('average_anchor_rate'))}\n"
             )
             report.write(
-                f"- Tampered trace rejection rate: {show(cognitive_row.get('tamper_rejection_rate'))}\n"
+                f"- Student-ID prefix rate: {show(coda_row.get('student_id_prefix_rate'))}\n\n"
             )
             report.write(
-                f"- Average grid mask rate: {show(cognitive_row.get('average_grid_mask_rate'))}\n\n"
+                "CoDA leaves each selected high-self-information target token visible and asks "
+                "the rewrite model to replace a low-self-information anchor immediately before "
+                "it. For KGW with prefix length 1, changing the previous token changes the "
+                "green-list context for the following token. CoDA is a proposed method, so no "
+                "paper attack-success value exists for it.\n\n"
             )
-            report.write(
-                "The grid artifact verifies an externally visible, deterministic token-state path. "
-                "It does not verify the model's hidden chain-of-thought, prove that the response is "
-                "safe, or turn the language model into a deterministic logic engine. Its watermark "
-                "result should be interpreted as a grid-guided masking and rewrite baseline.\n\n"
-            )
-            if control_row:
-                asr_difference = subtract_if_measured(
-                    cognitive_row.get("attack_success_rate"),
-                    control_row.get("attack_success_rate"),
-                )
-                similarity_difference = subtract_if_measured(
-                    cognitive_row.get("semantic_similarity"),
-                    control_row.get("semantic_similarity"),
-                )
-                report.write(f"- Normal rewrite control ASR: {show(control_row.get('attack_success_rate'))}\n")
-                report.write(
-                    f"- Grid ASR minus control ASR: {show(asr_difference)}\n"
-                )
-                report.write(
-                    f"- Grid similarity minus control similarity: {show(similarity_difference)}\n\n"
-                )
-                if asr_difference is not None and asr_difference > 0:
-                    report.write(
-                        "The grid-masked rewrite removed the watermark more often than the normal "
-                        "rewrite control in this run. Check the similarity difference before treating "
-                        "that as a useful improvement.\n\n"
-                    )
-                elif asr_difference is not None:
-                    report.write(
-                        "The grid-masked rewrite did not outperform the normal rewrite control on "
-                        "attack success in this run, so there is no evidence that the grid added a "
-                        "watermark-attack benefit.\n\n"
-                    )
-                else:
-                    report.write(
-                        "The grid and normal rewrite outputs could not be compared because attack "
-                        "success was not measured for both rows.\n\n"
-                    )
         else:
-            report.write("The Cognitive Integrity Grid baseline was not evaluated.\n\n")
+            report.write("CoDA was not evaluated.\n\n")
+
+        report.write("## Student-ID Prefix Control\n\n")
+        if prefix_only_row:
+            report.write(
+                f"- Prefix-only attack success rate: {show(prefix_only_row.get('attack_success_rate'))}\n"
+            )
+            report.write(
+                f"- Prefix-only semantic similarity: {show(prefix_only_row.get('semantic_similarity'))}\n\n"
+            )
+            report.write(
+                "This control adds the required student-ID prefix to the original watermarked "
+                "text without rewriting it. If this row has a high ASR, part of the apparent "
+                "CoDA or SIRA success may come from the prefix rather than the attack itself.\n\n"
+            )
+        else:
+            report.write("The student-ID prefix-only control was not evaluated.\n\n")
 
         report.write("## Honest Conclusion\n\n")
+        if coda_row and coda_row.get("attack_success_rate") is not None:
+            tiny_row = next(
+                (row for row in sira_rows if row.get("label") == "llama_3_2_3b"),
+                None,
+            )
+            report.write(
+                f"CoDA achieved ASR {show(coda_row.get('attack_success_rate'))} with semantic "
+                f"similarity {show(coda_row.get('semantic_similarity'))}. "
+            )
+            if coda_row.get("transfer_threshold_pass"):
+                report.write(
+                    "It met the experiment's attack-success and semantic-similarity criterion. "
+                    "This is preliminary evidence for the anchor-desynchronization idea, not a "
+                    "confirmed result at the current sample count.\n\n"
+                )
+            else:
+                report.write(
+                    "It did not meet the experiment's combined attack-success and "
+                    "semantic-similarity criterion in this run.\n\n"
+                )
+            if tiny_row and tiny_row.get("attack_success_rate") is not None:
+                report.write(
+                    f"CoDA ASR minus reproduced SIRA-Tiny ASR: "
+                    f"{show(subtract_if_measured(coda_row.get('attack_success_rate'), tiny_row.get('attack_success_rate')))}.\n\n"
+                )
+            if prefix_only_row and prefix_only_row.get("attack_success_rate") is not None:
+                report.write(
+                    f"CoDA ASR minus prefix-only ASR: "
+                    f"{show(subtract_if_measured(coda_row.get('attack_success_rate'), prefix_only_row.get('attack_success_rate')))}. "
+                    "A positive difference is evidence that anchor changes add value beyond the "
+                    "required prefix.\n\n"
+                )
+
         if paper_reproduction_mode:
             report.write(
                 "This run directly tests the two smaller attack-model configurations reported "
