@@ -3,6 +3,7 @@ datasets
 nltk
 jieba
 accelerate
+bitsandbytes
 SentencePiece
 openai==0.28
 matplotlib
@@ -13,3 +14,4 @@ sentence-transformers
 networkx
 translate
 tiktoken
+tqdm

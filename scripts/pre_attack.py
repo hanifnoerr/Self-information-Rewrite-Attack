@@ -2,17 +2,11 @@ import os
 import json
 import torch
 import numpy as np
+import time
 from tqdm import tqdm
 import argparse
 import transformers
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from watermark.auto_watermark import AutoWatermark
-from utils.transformers_config import TransformersConfig
-from visualize.font_settings import FontSettings
-from visualize.visualizer import ContinuousVisualizer
-from visualize.legend_settings import ContinuousLegendSettings
-from visualize.page_layout_settings import PageLayoutSettings
-from visualize.color_scheme import ColorSchemeForContinuousVisualization
+from model_utils import load_model_and_tokenizer
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Run paraphrasing + self-information blanking pipeline.")
@@ -25,6 +19,11 @@ def parse_args():
     parser.add_argument('--gpu', type=str, default='0', help='GPU IDs to use, e.g., "0,1,2"')
     parser.add_argument('--algorithms', type=str, default='KGW',
                         help='Comma-separated list of watermark algorithms to process')
+    parser.add_argument('--dtype', choices=['auto', 'fp16', 'bf16'], default='auto')
+    parser.add_argument('--load_in_4bit', action='store_true')
+    parser.add_argument('--load_in_8bit', action='store_true')
+    parser.add_argument('--max_samples', type=int, default=0, help='0 means all input samples')
+    parser.add_argument('--seed', type=int, default=42)
     return parser.parse_args()
 
 def fill_parapharseprompt(input_text):
@@ -39,19 +38,28 @@ def fill_parapharseprompt(input_text):
 
 if __name__ == "__main__":
     args = parse_args()
+    start_time = time.time()
     algorithms = args.algorithms.split(",")
 
     print(f"PID: {os.getpid()}")
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
-    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    torch.manual_seed(args.seed)
+    os.makedirs(args.result_dir, exist_ok=True)
+    if torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats()
 
     # Stage 1: Paraphrasing
     print("=== Stage 1: Generate reference text ===")
+    paraphrase_model, paraphrase_tokenizer = load_model_and_tokenizer(
+        args.model_path,
+        dtype_name=args.dtype,
+        load_in_4bit=args.load_in_4bit,
+        load_in_8bit=args.load_in_8bit,
+    )
     pipeline = transformers.pipeline(
         "text-generation",
-        model=args.model_path,
-        model_kwargs={"torch_dtype": torch.bfloat16},
-        device_map="auto",
+        model=paraphrase_model,
+        tokenizer=paraphrase_tokenizer,
         do_sample=False
     )
     
@@ -61,6 +69,8 @@ if __name__ == "__main__":
 
         with open(input_file, 'r') as f:
             lines = f.readlines()
+        if args.max_samples > 0:
+            lines = lines[:args.max_samples]
 
         last_line = 0
         if os.path.exists(ref_output_file):
@@ -90,7 +100,7 @@ if __name__ == "__main__":
                 }
                 out_f.write(json.dumps(response_item) + '\n')
 
-    del pipeline
+    del pipeline, paraphrase_model, paraphrase_tokenizer
     torch.cuda.empty_cache()
 
     # Stage 2: Self-Information Blanking
@@ -144,8 +154,12 @@ if __name__ == "__main__":
 
             return transformed_tokens
 
-    model = AutoModelForCausalLM.from_pretrained(args.model_path, device_map="auto")
-    tokenizer = AutoTokenizer.from_pretrained(args.model_path)
+    model, tokenizer = load_model_and_tokenizer(
+        args.model_path,
+        dtype_name=args.dtype,
+        load_in_4bit=args.load_in_4bit,
+        load_in_8bit=args.load_in_8bit,
+    )
     calculator = SelfInformationCalculator(model=model, tokenizer=tokenizer)
     threshold = args.threshold
 
@@ -161,6 +175,8 @@ if __name__ == "__main__":
 
         with open(ref_output_file, 'r') as f:
             lines = f.readlines()
+        if args.max_samples > 0:
+            lines = lines[:args.max_samples]
 
         with open(blank_output_file, 'a') as out_f:
             for line in tqdm(lines[processed_lines:], desc=f"Stage 2: {algorithm}", unit="line"):
@@ -185,3 +201,6 @@ if __name__ == "__main__":
 
     del model, tokenizer, calculator
     torch.cuda.empty_cache()
+    peak_memory = torch.cuda.max_memory_allocated() / (1024 ** 3) if torch.cuda.is_available() else 0
+    print(f"Pre-attack runtime: {time.time() - start_time:.2f} seconds")
+    print(f"Pre-attack peak GPU memory: {peak_memory:.2f} GB")
