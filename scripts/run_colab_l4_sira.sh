@@ -44,7 +44,6 @@ pip install bitsandbytes tqdm"
 FILES_TO_UPLOAD=(
   "README_COLAB_SIRA.md"
   "requirements.txt"
-  "config/paper_models_l4.json"
   "config/model_matrix_l4.json"
   "scripts/model_utils.py"
   "scripts/generate_watermark.py"
@@ -54,6 +53,7 @@ FILES_TO_UPLOAD=(
   "scripts/run_sira_model_l4.sh"
   "scripts/run_model_matrix_l4.py"
   "scripts/run_coda_attack.py"
+  "scripts/run_coda_matrix_l4.py"
   "scripts/run_spia_attack.py"
   "scripts/evaluate_sira_transfer.py"
   "scripts/compare_transfer_results.py"
@@ -73,19 +73,19 @@ run_remote "set -euo pipefail
 cd /content/Self-information-Rewrite-Attack
 export PYTHONPATH=/content/Self-information-Rewrite-Attack
 python scripts/run_model_matrix_l4.py \
-  --config_path /content/Self-information-Rewrite-Attack/config/paper_models_l4.json \
+  --config_path /content/Self-information-Rewrite-Attack/config/model_matrix_l4.json \
   --repo_dir /content/Self-information-Rewrite-Attack \
   --output_root /content/sira_outputs \
   --algorithm '${ALGORITHM}' \
   --samples '${SAMPLES}'
 
-python scripts/run_coda_attack.py \
+python scripts/run_coda_matrix_l4.py \
+  --config_path /content/Self-information-Rewrite-Attack/config/model_matrix_l4.json \
+  --repo_dir /content/Self-information-Rewrite-Attack \
   --input_path '/content/sira_outputs/watermarked/${ALGORITHM}_response.json' \
-  --output_path /content/sira_outputs/coda/coda_attack.jsonl \
-  --model_name meta-llama/Llama-3.2-3B-Instruct \
+  --output_root /content/sira_outputs \
   --threshold 30 \
-  --dtype bf16 \
-  --max_samples '${SAMPLES}'
+  --samples '${SAMPLES}'
 
 python scripts/run_spia_attack.py \
   --input_path '/content/sira_outputs/watermarked/${ALGORITHM}_response.json' \
@@ -94,14 +94,15 @@ python scripts/run_spia_attack.py \
 
 python scripts/write_environment.py \
   --output_path /content/sira_outputs/environment.json \
-  --models_config /content/sira_outputs/model_runs.json
+  --models_config /content/sira_outputs/model_runs.json \
+  --coda_models_config /content/sira_outputs/coda_model_runs.json
 
 python scripts/evaluate_sira_transfer.py \
   --generation_model facebook/opt-1.3b \
   --algorithm '${ALGORITHM}' \
   --watermarked_input '/content/sira_outputs/watermarked/${ALGORITHM}_response.json' \
   --models_config /content/sira_outputs/model_runs.json \
-  --coda_input /content/sira_outputs/coda/coda_attack.jsonl \
+  --coda_models_config /content/sira_outputs/coda_model_runs.json \
   --spia_input /content/sira_outputs/spia/student_id_prefix_attack.jsonl \
   --output_root /content/sira_outputs \
   --dtype bf16 \

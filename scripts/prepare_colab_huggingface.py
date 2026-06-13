@@ -25,7 +25,7 @@ def main():
         "meta-llama/Llama-3.2-3B-Instruct",
         "meta-llama/Meta-Llama-3-8B-Instruct",
     ]
-    matrix_path = os.environ.get("SIRA_MODELS_CONFIG", "config/paper_models_l4.json")
+    matrix_path = os.environ.get("SIRA_MODELS_CONFIG", "config/model_matrix_l4.json")
     if not os.path.exists(matrix_path):
         matrix_path = "config/model_matrix_l4.json"
     if os.path.exists(matrix_path):

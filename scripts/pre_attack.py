@@ -21,7 +21,7 @@ def parse_args():
     parser.add_argument('--dtype', choices=['auto', 'fp16', 'bf16'], default='auto')
     parser.add_argument('--load_in_4bit', action='store_true')
     parser.add_argument('--load_in_8bit', action='store_true')
-    parser.add_argument('--loader_type', choices=['auto', 'causal', 'processor_causal'], default='auto')
+    parser.add_argument('--loader_type', choices=['auto', 'causal', 'multimodal', 'processor_causal'], default='auto')
     parser.add_argument('--max_samples', type=int, default=0, help='0 means all input samples')
     parser.add_argument('--seed', type=int, default=42)
     return parser.parse_args()

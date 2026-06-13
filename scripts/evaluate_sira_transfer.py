@@ -139,10 +139,8 @@ def main():
     parser.add_argument("--algorithm", default="KGW")
     parser.add_argument("--watermarked_input", required=True)
     parser.add_argument("--models_config", required=True)
-    parser.add_argument("--coda_input", default="")
+    parser.add_argument("--coda_models_config", default="")
     parser.add_argument("--spia_input", default="")
-    parser.add_argument("--coda_model", default="meta-llama/Llama-3.2-3B-Instruct")
-    parser.add_argument("--coda_quantization", default="bf16")
     parser.add_argument("--output_root", default="/content/sira_outputs")
     parser.add_argument("--similarity_model", default="sentence-transformers/all-MiniLM-L6-v2")
     parser.add_argument("--dtype", choices=["auto", "fp16", "bf16"], default="auto")
@@ -151,6 +149,10 @@ def main():
 
     with open(args.models_config, "r", encoding="utf-8-sig") as input_file:
         model_runs = json.load(input_file)
+    coda_model_runs = []
+    if args.coda_models_config and os.path.exists(args.coda_models_config):
+        with open(args.coda_models_config, "r", encoding="utf-8-sig") as input_file:
+            coda_model_runs = json.load(input_file)
 
     model, tokenizer = load_model_and_tokenizer(args.generation_model, dtype_name=args.dtype)
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -207,10 +209,33 @@ def main():
         result = evaluate_items(attack_items, "attack_text", watermark, similarity_model)
         results.append({"method_type": "SIRA", **model_run, **result})
 
-    coda_record = None
-    coda_items = read_jsonl(args.coda_input, args.max_samples)
-    if coda_items:
-        print(f"Evaluating CoDA: {len(coda_items)} samples")
+    coda_records = []
+    for model_run in coda_model_runs:
+        coda_items = []
+        if model_run.get("run_status") in {None, "completed"}:
+            coda_items = read_jsonl(model_run["coda_path"], args.max_samples)
+        if not coda_items:
+            print(f"Recording missing CoDA output: {model_run['coda_path']}")
+            coda_record = {
+                **model_run,
+                "label": f"coda_{model_run['label']}",
+                "source_model_label": model_run["label"],
+                "display_name": f"CoDA - {model_run['display_name']}",
+                "method_type": "CoDA",
+                "attack_path": model_run["coda_path"],
+                "attack_success_rate": None,
+                "average_watermark_score": None,
+                "semantic_similarity": None,
+                "number_of_samples": 0,
+                "evaluated_samples": 0,
+                "failed_samples": args.max_samples if args.max_samples > 0 else 0,
+                "runtime_seconds": 0,
+            }
+            coda_records.append(coda_record)
+            results.append(coda_record)
+            continue
+
+        print(f"Evaluating CoDA - {model_run['display_name']}: {len(coda_items)} samples")
         coda_result = evaluate_items(
             coda_items,
             "attack_text",
@@ -219,18 +244,16 @@ def main():
         )
         coda_artifacts = evaluate_coda_artifacts(coda_items)
         coda_record = {
-            "label": "coda",
-            "display_name": "CoDA - Context-Anchor Desynchronization Attack",
+            **model_run,
+            "label": f"coda_{model_run['label']}",
+            "source_model_label": model_run["label"],
+            "display_name": f"CoDA - {model_run['display_name']}",
             "method_type": "CoDA",
-            "model_family": "Llama",
-            "model_name": args.coda_model,
-            "parameter_size": "3B",
-            "size_tier": "Proposed method",
-            "quantization": args.coda_quantization,
-            "attack_path": args.coda_input,
+            "attack_path": model_run["coda_path"],
             **coda_result,
             **coda_artifacts,
         }
+        coda_records.append(coda_record)
         results.append(coda_record)
 
     spia_record = None
@@ -263,9 +286,9 @@ def main():
     if spia_record:
         save_json(os.path.join(results_dir, "spia_eval.json"), spia_record)
         save_csv(os.path.join(results_dir, "spia_eval.csv"), [spia_record])
-    if coda_record:
-        save_json(os.path.join(results_dir, "coda_eval.json"), coda_record)
-        save_csv(os.path.join(results_dir, "coda_eval.csv"), [coda_record])
+    if coda_records:
+        save_json(os.path.join(results_dir, "coda_eval.json"), coda_records)
+        save_csv(os.path.join(results_dir, "coda_eval.csv"), coda_records)
 
     print(f"Saved transfer evaluation under: {results_dir}")
 

@@ -118,6 +118,11 @@ def main():
     parser.add_argument("--dtype", choices=["auto", "fp16", "bf16"], default="bf16")
     parser.add_argument("--load_in_4bit", action="store_true")
     parser.add_argument("--load_in_8bit", action="store_true")
+    parser.add_argument(
+        "--loader_type",
+        choices=["auto", "causal", "multimodal", "processor_causal"],
+        default="auto",
+    )
     parser.add_argument("--max_samples", type=int, default=10)
     parser.add_argument("--max_new_tokens", type=int, default=256)
     parser.add_argument("--seed", type=int, default=42)
@@ -133,6 +138,7 @@ def main():
         dtype_name=args.dtype,
         load_in_4bit=args.load_in_4bit,
         load_in_8bit=args.load_in_8bit,
+        loader_type=args.loader_type,
     )
     tokenizer = get_text_tokenizer(tokenizer_or_processor)
 

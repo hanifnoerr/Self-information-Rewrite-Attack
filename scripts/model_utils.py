@@ -47,9 +47,15 @@ def load_model_and_tokenizer(
     print(f"dtype={torch_dtype}, load_in_4bit={load_in_4bit}, load_in_8bit={load_in_8bit}")
 
     if loader_type == "auto":
-        loader_type = "processor_causal" if "gemma-4-" in model_name.lower() else "causal"
+        loader_type = "multimodal" if "gemma-4-" in model_name.lower() else "causal"
 
-    if loader_type == "processor_causal":
+    if loader_type == "multimodal":
+        from transformers import AutoModelForMultimodalLM
+
+        print("loader_type=multimodal")
+        model = AutoModelForMultimodalLM.from_pretrained(model_name, **model_args)
+        tokenizer_or_processor = AutoProcessor.from_pretrained(model_name)
+    elif loader_type == "processor_causal":
         print("loader_type=processor_causal")
         model = AutoModelForCausalLM.from_pretrained(model_name, **model_args)
         tokenizer_or_processor = AutoProcessor.from_pretrained(model_name)

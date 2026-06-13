@@ -54,6 +54,13 @@ def subtract_if_measured(first_value, second_value):
     return round(first_value - second_value, 6)
 
 
+def average_measured(values):
+    measured = [value for value in values if value is not None]
+    if not measured:
+        return None
+    return sum(measured) / len(measured)
+
+
 def save_csv(path, rows):
     fieldnames = []
     for row in rows:
@@ -115,10 +122,10 @@ def main():
     paper_reproduction_mode = bool(sira_labels) and sira_labels.issubset(
         {"llama_3_2_3b", "llama_3_8b"}
     )
-    coda_row = next(
-        (row for row in comparison_rows if row.get("label") == "coda"),
-        None,
-    )
+    coda_rows = [
+        row for row in comparison_rows
+        if row.get("method_type") == "CoDA"
+    ]
     spia_row = next(
         (row for row in comparison_rows if row.get("label") == "spia"),
         None,
@@ -136,20 +143,26 @@ def main():
         and row.get("model_family") != "Llama"
         and row.get("attack_success_rate") is not None
     ]
+    sira_by_label = {row.get("label"): row for row in sira_rows}
+    coda_by_label = {
+        row.get("source_model_label"): row for row in coda_rows
+    }
 
     paper_style_rows = []
     spia_asr = (
         spia_row.get("attack_success_rate") if spia_row else None
     )
     for row in comparison_rows:
-        paper_method, paper_asr = get_paper_reference(row.get("label"), args.algorithm)
+        paper_method, paper_asr = None, None
+        if row.get("method_type") == "SIRA":
+            paper_method, paper_asr = get_paper_reference(row.get("label"), args.algorithm)
         note = "Cross-model SIRA transfer test."
         if paper_method:
             note = (
                 f"Released-code checkpoint for paper {paper_method}; compare cautiously unless "
                 "all paper settings match."
             )
-        elif row.get("label") == "coda":
+        elif row.get("method_type") == "CoDA":
             note = (
                 "Proposed CoDA method. It changes low-information anchor tokens before "
                 "high-information targets; it was not evaluated by the paper."
@@ -166,6 +179,15 @@ def main():
 
         reproduced_asr = row.get("attack_success_rate")
         difference = subtract_if_measured(reproduced_asr, paper_asr)
+        source_model_label = row.get("source_model_label", row.get("label"))
+        paired_sira_row = sira_by_label.get(source_model_label)
+        paired_coda_row = coda_by_label.get(source_model_label)
+        paired_sira_asr = (
+            paired_sira_row.get("attack_success_rate") if paired_sira_row else None
+        )
+        paired_coda_asr = (
+            paired_coda_row.get("attack_success_rate") if paired_coda_row else None
+        )
 
         paper_style_rows.append(
             {
@@ -183,6 +205,9 @@ def main():
                 "difference": difference,
                 "spia_attack_success_rate": spia_asr,
                 "asr_minus_spia": subtract_if_measured(reproduced_asr, spia_asr),
+                "paired_sira_asr": paired_sira_asr,
+                "paired_coda_asr": paired_coda_asr,
+                "coda_minus_sira_asr": subtract_if_measured(paired_coda_asr, paired_sira_asr),
                 "semantic_similarity": row.get("semantic_similarity"),
                 "average_anchor_count": row.get("average_anchor_count"),
                 "average_anchor_rate": row.get("average_anchor_rate"),
@@ -286,22 +311,28 @@ def main():
                 "precision, package versions, and all generation settings match the paper.\n\n"
             )
 
-        report.write("## CoDA Proposed Attack\n\n")
-        if coda_row:
+        report.write("## CoDA Across Models\n\n")
+        if coda_rows:
+            report.write("| model | family | CoDA ASR | SIRA ASR | CoDA minus SIRA | similarity | anchor rate |\n")
+            report.write("|---|---|---:|---:|---:|---:|---:|\n")
+            for row in coda_rows:
+                paired_sira_row = sira_by_label.get(row.get("source_model_label"))
+                paired_sira_asr = (
+                    paired_sira_row.get("attack_success_rate") if paired_sira_row else None
+                )
+                report.write(
+                    f"| {row['display_name']} | {row['model_family']} | "
+                    f"{show(row.get('attack_success_rate'))} | {show(paired_sira_asr)} | "
+                    f"{show(subtract_if_measured(row.get('attack_success_rate'), paired_sira_asr))} | "
+                    f"{show(row.get('semantic_similarity'))} | {show(row.get('average_anchor_rate'))} |\n"
+                )
+            report.write("\n")
             report.write(
-                f"- Attack success rate: {show(coda_row.get('attack_success_rate'))}\n"
+                f"- Average CoDA ASR: {show(average_measured([row.get('attack_success_rate') for row in coda_rows]))}\n"
             )
             report.write(
-                f"- Semantic similarity: {show(coda_row.get('semantic_similarity'))}\n"
-            )
-            report.write(
-                f"- Average suspicious-token count: {show(coda_row.get('average_suspicious_token_count'))}\n"
-            )
-            report.write(
-                f"- Average changed-anchor count: {show(coda_row.get('average_anchor_count'))}\n"
-            )
-            report.write(
-                f"- Average anchor rate: {show(coda_row.get('average_anchor_rate'))}\n"
+                f"- Average CoDA semantic similarity: "
+                f"{show(average_measured([row.get('semantic_similarity') for row in coda_rows]))}\n\n"
             )
             report.write(
                 "CoDA leaves each selected high-self-information target token visible and asks "
@@ -333,16 +364,29 @@ def main():
             report.write("SPIA was not evaluated.\n\n")
 
         report.write("## Honest Conclusion\n\n")
-        if coda_row and coda_row.get("attack_success_rate") is not None:
-            tiny_row = next(
-                (row for row in sira_rows if row.get("label") == "llama_3_2_3b"),
-                None,
+        measured_coda_rows = [
+            row for row in coda_rows
+            if row.get("attack_success_rate") is not None
+        ]
+        if measured_coda_rows:
+            best_coda_row = max(
+                measured_coda_rows,
+                key=lambda row: row.get("attack_success_rate"),
             )
+            paired_wins = 0
+            paired_tests = 0
+            for row in measured_coda_rows:
+                paired_sira_row = sira_by_label.get(row.get("source_model_label"))
+                if paired_sira_row and paired_sira_row.get("attack_success_rate") is not None:
+                    paired_tests += 1
+                    if row["attack_success_rate"] > paired_sira_row["attack_success_rate"]:
+                        paired_wins += 1
             report.write(
-                f"CoDA achieved ASR {show(coda_row.get('attack_success_rate'))} with semantic "
-                f"similarity {show(coda_row.get('semantic_similarity'))}. "
+                f"Best CoDA configuration: {best_coda_row['display_name']} with ASR "
+                f"{show(best_coda_row.get('attack_success_rate'))} and semantic similarity "
+                f"{show(best_coda_row.get('semantic_similarity'))}. "
             )
-            if coda_row.get("transfer_threshold_pass"):
+            if best_coda_row.get("transfer_threshold_pass"):
                 report.write(
                     "It met the experiment's attack-success and semantic-similarity criterion. "
                     "This is preliminary evidence for the anchor-desynchronization idea, not a "
@@ -353,15 +397,13 @@ def main():
                     "It did not meet the experiment's combined attack-success and "
                     "semantic-similarity criterion in this run.\n\n"
                 )
-            if tiny_row and tiny_row.get("attack_success_rate") is not None:
-                report.write(
-                    f"CoDA ASR minus reproduced SIRA-Tiny ASR: "
-                    f"{show(subtract_if_measured(coda_row.get('attack_success_rate'), tiny_row.get('attack_success_rate')))}.\n\n"
-                )
+            report.write(
+                f"CoDA beat SIRA on {paired_wins} of {paired_tests} measured same-model pairs.\n\n"
+            )
             if spia_row and spia_row.get("attack_success_rate") is not None:
                 report.write(
-                    f"CoDA ASR minus SPIA ASR: "
-                    f"{show(subtract_if_measured(coda_row.get('attack_success_rate'), spia_row.get('attack_success_rate')))}.\n\n"
+                    f"Best CoDA ASR minus SPIA ASR: "
+                    f"{show(subtract_if_measured(best_coda_row.get('attack_success_rate'), spia_row.get('attack_success_rate')))}.\n\n"
                 )
 
         if paper_reproduction_mode:
