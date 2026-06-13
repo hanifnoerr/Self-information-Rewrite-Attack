@@ -126,8 +126,11 @@ def main():
                 "method": row.get("method"),
                 "detector_input": row.get("detector_input"),
                 "attack_success_rate": row.get("attack_success_rate"),
+                "end_to_end_attack_success_rate": row.get("end_to_end_attack_success_rate"),
                 "semantic_similarity": row.get("semantic_similarity"),
                 "decode_success_rate": row.get("decode_success_rate"),
+                "evaluated_samples": row.get("evaluated_samples"),
+                "failed_samples": row.get("failed_samples"),
                 "note": row.get("note", ""),
             }
         )
@@ -167,12 +170,13 @@ def main():
 
         report.write("## 4. Base64 Baseline\n\n")
         if final_table:
-            report.write("| method | detector input | ASR | semantic similarity | decode success rate | note |\n")
-            report.write("|---|---|---:|---:|---:|---|\n")
+            report.write("| method | detector input | evaluated ASR | end-to-end ASR | semantic similarity | decode success rate | note |\n")
+            report.write("|---|---|---:|---:|---:|---:|---|\n")
             for row in final_table:
                 report.write(
                     f"| {row['method']} | {row['detector_input']} | {show(row['attack_success_rate'])} | "
-                    f"{show(row['semantic_similarity'])} | {show(row['decode_success_rate'])} | "
+                    f"{show(row['end_to_end_attack_success_rate'])} | {show(row['semantic_similarity'])} | "
+                    f"{show(row['decode_success_rate'])} | "
                     f"{row['note']} |\n"
                 )
         else:
@@ -196,6 +200,28 @@ def main():
             "Decoded raw Base64 should reproduce the original watermark exactly. If an LLM-generated Base64 paraphrase "
             "works after decoding, the meaningful attack is the paraphrasing, not Base64 encoding itself.\n"
         )
+
+        result_by_name = {row["method"]: row for row in final_table}
+        direct_decoded = result_by_name.get("LLM Base64 paraphrase decoded text")
+        normal = result_by_name.get("normal paraphrase baseline")
+        external_decoded = result_by_name.get("normal paraphrase externally Base64 encoded decoded")
+
+        report.write("\n### Base64 Interpretation\n\n")
+        if direct_decoded:
+            report.write(
+                f"- Direct LLM Base64 decode success rate: {show(direct_decoded.get('decode_success_rate'))}; "
+                f"end-to-end ASR: {show(direct_decoded.get('end_to_end_attack_success_rate'))}; "
+                f"semantic similarity: {show(direct_decoded.get('semantic_similarity'))}.\n"
+            )
+        if normal and external_decoded:
+            report.write(
+                f"- Normal paraphrase ASR: {show(normal.get('end_to_end_attack_success_rate'))}; "
+                f"the same paraphrase after external Base64 encode/decode ASR: "
+                f"{show(external_decoded.get('end_to_end_attack_success_rate'))}.\n"
+            )
+            report.write(
+                "- If those two values match, Base64 added no watermark-removal effect after decoding.\n"
+            )
 
     print(f"Saved paper comparison: {os.path.join(results_dir, 'paper_comparison.csv')}")
     print(f"Saved final comparison: {os.path.join(results_dir, 'final_comparison.csv')}")

@@ -85,6 +85,9 @@ def evaluate_items(name, detector_input, items, watermark, similarity_model, mod
     attack_success_rate = None
     if evaluated_samples:
         attack_success_rate = sum(not flag for flag in watermarked_flags) / evaluated_samples
+    end_to_end_attack_success_rate = None
+    if items:
+        end_to_end_attack_success_rate = sum(not flag for flag in watermarked_flags) / len(items)
 
     decode_values = [item.get("decode_success") for item in items if "decode_success" in item]
     decode_success_rate = None
@@ -95,11 +98,26 @@ def evaluate_items(name, detector_input, items, watermark, similarity_model, mod
     if "raw" not in name:
         semantic_similarity = calculate_similarity(items, detector_input, similarity_model)
 
+    notes = {
+        "Base64 raw encoding": "Raw Base64 is not readable natural language.",
+        "Base64 decoded original text": "External decoding restores the original watermarked text.",
+        "LLM Base64 paraphrase raw string": "Raw Base64 is not readable natural language.",
+        "LLM Base64 paraphrase decoded text": (
+            "Meaningful only when decode success and semantic similarity are both high. "
+            "End-to-end ASR counts decode failures as failed attacks."
+        ),
+        "normal paraphrase externally Base64 encoded raw": "Raw Base64 is not readable natural language.",
+        "normal paraphrase externally Base64 encoded decoded": (
+            "This is exactly the normal paraphrase after external encode/decode and isolates Base64's effect."
+        ),
+    }
+
     return {
         "method": name,
         "detector_input": detector_input,
         "watermark_algorithm": items[0].get("algorithm", "") if items else "",
         "attack_success_rate": attack_success_rate,
+        "end_to_end_attack_success_rate": end_to_end_attack_success_rate,
         "average_watermark_score": sum(scores) / len(scores) if scores else None,
         "semantic_similarity": semantic_similarity,
         "decode_success_rate": decode_success_rate,
@@ -109,7 +127,7 @@ def evaluate_items(name, detector_input, items, watermark, similarity_model, mod
         "failed_samples": failed_samples,
         "runtime_seconds": time.time() - start_time,
         "gpu_peak_memory_gb": torch.cuda.max_memory_allocated() / (1024 ** 3) if torch.cuda.is_available() else 0,
-        "note": "Raw Base64 is not readable natural language." if "raw" in name else "",
+        "note": notes.get(name, ""),
     }
 
 
@@ -140,6 +158,8 @@ def main():
     parser.add_argument("--base64_llm_raw_input", default="")
     parser.add_argument("--base64_llm_decoded_input", default="")
     parser.add_argument("--normal_paraphrase_input", default="")
+    parser.add_argument("--normal_paraphrase_base64_raw_input", default="")
+    parser.add_argument("--normal_paraphrase_base64_decoded_input", default="")
     parser.add_argument("--output_root", default="/content/sira_outputs")
     parser.add_argument("--similarity_model", default="sentence-transformers/all-MiniLM-L6-v2")
     parser.add_argument("--dtype", choices=["auto", "fp16", "bf16"], default="auto")
@@ -178,6 +198,16 @@ def main():
         ("LLM Base64 paraphrase raw string", "base64_output", args.base64_llm_raw_input),
         ("LLM Base64 paraphrase decoded text", "decoded_text", args.base64_llm_decoded_input),
         ("normal paraphrase baseline", "attack_text", args.normal_paraphrase_input),
+        (
+            "normal paraphrase externally Base64 encoded raw",
+            "base64_output",
+            args.normal_paraphrase_base64_raw_input,
+        ),
+        (
+            "normal paraphrase externally Base64 encoded decoded",
+            "decoded_text",
+            args.normal_paraphrase_base64_decoded_input,
+        ),
     ]
 
     results = []

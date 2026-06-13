@@ -59,7 +59,7 @@ def write_raw_base64(items, raw_path, decoded_path, algorithm):
                 decoded_file.write(json.dumps(decoded_item, ensure_ascii=False) + "\n")
 
 
-def run_llm_baselines(items, args, llm_raw_path, normal_path):
+def run_llm_baselines(items, args, llm_raw_path, normal_path, external_raw_path, external_decoded_path):
     model, tokenizer = load_model_and_tokenizer(
         args.model_name,
         dtype_name=args.dtype,
@@ -75,6 +75,8 @@ def run_llm_baselines(items, args, llm_raw_path, normal_path):
 
     with open(llm_raw_path, "w", encoding="utf-8") as llm_file:
         normal_file = open(normal_path, "w", encoding="utf-8") if args.run_normal_paraphrase else None
+        external_raw_file = open(external_raw_path, "w", encoding="utf-8") if args.run_normal_paraphrase else None
+        external_decoded_file = open(external_decoded_path, "w", encoding="utf-8") if args.run_normal_paraphrase else None
         try:
             for item_id, item in enumerate(tqdm(items, desc="LLM Base64 baseline")):
                 watermarked_text = item["watermarked_text"]
@@ -86,7 +88,7 @@ def run_llm_baselines(items, args, llm_raw_path, normal_path):
                     f"Text:\n{watermarked_text}\n\nBase64:"
                 )
                 messages = [{"role": "user", "content": base64_prompt}]
-                outputs = pipeline(messages, max_new_tokens=args.max_new_tokens, do_sample=False)
+                outputs = pipeline(messages, max_new_tokens=args.base64_max_new_tokens, do_sample=False)
 
                 llm_item = {
                     "id": item_id,
@@ -105,19 +107,45 @@ def run_llm_baselines(items, args, llm_raw_path, normal_path):
                         f"Text:\n{watermarked_text}"
                     )
                     messages = [{"role": "user", "content": normal_prompt}]
-                    outputs = pipeline(messages, max_new_tokens=args.max_new_tokens, do_sample=False)
+                    outputs = pipeline(messages, max_new_tokens=args.paraphrase_max_new_tokens, do_sample=False)
+                    paraphrase_text = get_generated_text(outputs)
                     normal_item = {
                         "id": item_id,
                         "algorithm": args.algorithm,
                         "model_name": args.model_name,
                         "prompt": item.get("prompt", ""),
                         "watermarked_text": watermarked_text,
-                        "attack_text": get_generated_text(outputs),
+                        "attack_text": paraphrase_text,
                     }
                     normal_file.write(json.dumps(normal_item, ensure_ascii=False) + "\n")
+
+                    # This control isolates Base64 from paraphrasing. Encoding and
+                    # decoding must return the exact same normal paraphrase.
+                    encoded_paraphrase = base64.b64encode(paraphrase_text.encode("utf-8")).decode("ascii")
+                    external_raw_item = {
+                        "id": item_id,
+                        "algorithm": args.algorithm,
+                        "model_name": args.model_name,
+                        "prompt": item.get("prompt", ""),
+                        "watermarked_text": watermarked_text,
+                        "base64_output": encoded_paraphrase,
+                        "decode_success": True,
+                        "decode_error": "",
+                    }
+                    external_decoded_item = {
+                        **external_raw_item,
+                        "decoded_text": base64.b64decode(encoded_paraphrase).decode("utf-8"),
+                        "decoded_matches_normal_paraphrase": True,
+                    }
+                    external_raw_file.write(json.dumps(external_raw_item, ensure_ascii=False) + "\n")
+                    external_decoded_file.write(json.dumps(external_decoded_item, ensure_ascii=False) + "\n")
         finally:
             if normal_file:
                 normal_file.close()
+            if external_raw_file:
+                external_raw_file.close()
+            if external_decoded_file:
+                external_decoded_file.close()
 
     del pipeline, model, tokenizer
     torch.cuda.empty_cache()
@@ -134,7 +162,8 @@ def main():
     parser.add_argument("--load_in_8bit", action="store_true")
     parser.add_argument("--run_normal_paraphrase", action="store_true")
     parser.add_argument("--max_samples", type=int, default=10)
-    parser.add_argument("--max_new_tokens", type=int, default=512)
+    parser.add_argument("--base64_max_new_tokens", type=int, default=2048)
+    parser.add_argument("--paraphrase_max_new_tokens", type=int, default=512)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
@@ -160,8 +189,18 @@ def main():
     if args.model_name:
         llm_raw_path = os.path.join(base64_llm_dir, "base64_llm_raw.jsonl")
         normal_path = os.path.join(normal_dir, "normal_paraphrase.jsonl")
-        run_llm_baselines(items, args, llm_raw_path, normal_path)
+        external_raw_path = os.path.join(base64_llm_dir, "normal_paraphrase_base64_raw.jsonl")
+        external_decoded_path = os.path.join(base64_llm_dir, "normal_paraphrase_base64_decoded.jsonl")
+        run_llm_baselines(
+            items,
+            args,
+            llm_raw_path,
+            normal_path,
+            external_raw_path,
+            external_decoded_path,
+        )
         print(f"Saved LLM Base64 outputs: {llm_raw_path}")
+        print(f"Saved externally encoded normal paraphrases: {external_raw_path}")
 
     print(f"Base64 baseline runtime: {time.time() - start_time:.2f} seconds")
 

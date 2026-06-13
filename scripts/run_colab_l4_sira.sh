@@ -52,6 +52,7 @@ FILES_TO_UPLOAD=(
   "scripts/run_sira_small_l4.sh"
   "scripts/run_base64_baseline.py"
   "scripts/decode_base64_outputs.py"
+  "scripts/create_base64_side_by_side.py"
   "scripts/evaluate_base64_baseline.py"
   "scripts/compare_results.py"
   "scripts/write_environment.py"
@@ -86,6 +87,17 @@ python scripts/decode_base64_outputs.py \
   --input_path /content/sira_outputs/base64_llm/base64_llm_raw.jsonl \
   --output_path /content/sira_outputs/base64_llm/base64_llm_decoded.jsonl
 
+python scripts/create_base64_side_by_side.py \
+  --raw_original /content/sira_outputs/base64/base64_raw.jsonl \
+  --decoded_original /content/sira_outputs/base64/base64_decoded.jsonl \
+  --llm_raw /content/sira_outputs/base64_llm/base64_llm_raw.jsonl \
+  --llm_decoded /content/sira_outputs/base64_llm/base64_llm_decoded.jsonl \
+  --normal_paraphrase /content/sira_outputs/normal_paraphrase/normal_paraphrase.jsonl \
+  --external_raw /content/sira_outputs/base64_llm/normal_paraphrase_base64_raw.jsonl \
+  --external_decoded /content/sira_outputs/base64_llm/normal_paraphrase_base64_decoded.jsonl \
+  --output_jsonl /content/sira_outputs/base64_llm/base64_side_by_side.jsonl \
+  --output_csv /content/sira_outputs/base64_llm/base64_side_by_side.csv
+
 python scripts/evaluate_base64_baseline.py \
   --generation_model facebook/opt-1.3b \
   --algorithm '${ALGORITHM}' \
@@ -97,6 +109,8 @@ python scripts/evaluate_base64_baseline.py \
   --base64_llm_raw_input /content/sira_outputs/base64_llm/base64_llm_raw.jsonl \
   --base64_llm_decoded_input /content/sira_outputs/base64_llm/base64_llm_decoded.jsonl \
   --normal_paraphrase_input /content/sira_outputs/normal_paraphrase/normal_paraphrase.jsonl \
+  --normal_paraphrase_base64_raw_input /content/sira_outputs/base64_llm/normal_paraphrase_base64_raw.jsonl \
+  --normal_paraphrase_base64_decoded_input /content/sira_outputs/base64_llm/normal_paraphrase_base64_decoded.jsonl \
   --output_root /content/sira_outputs \
   --dtype bf16 \
   --max_samples '${SAMPLES}'

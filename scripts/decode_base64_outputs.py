@@ -56,6 +56,7 @@ def main():
                     "decoded_text": "",
                     "decode_success": False,
                     "decode_error": "",
+                    "decoded_matches_original": False,
                 }
 
                 for key in ["prompt", "algorithm", "model_name"]:
@@ -65,6 +66,9 @@ def main():
                 try:
                     result["decoded_text"] = decode_base64_text(result["base64_output"])
                     result["decode_success"] = True
+                    result["decoded_matches_original"] = (
+                        result["decoded_text"] == result["watermarked_text"]
+                    )
                     success_count += 1
                 except Exception as error:
                     result["decode_error"] = str(error)
