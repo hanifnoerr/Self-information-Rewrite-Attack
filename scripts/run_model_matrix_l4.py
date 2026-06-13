@@ -13,8 +13,8 @@ def save_json(path, data):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run the three-family, three-size SIRA matrix.")
-    parser.add_argument("--config_path", default="config/model_matrix_l4.json")
+    parser = argparse.ArgumentParser(description="Run the configured SIRA attack models.")
+    parser.add_argument("--config_path", default="config/paper_models_l4.json")
     parser.add_argument("--repo_dir", default="/content/Self-information-Rewrite-Attack")
     parser.add_argument("--output_root", default="/content/sira_outputs")
     parser.add_argument("--algorithm", default="KGW")

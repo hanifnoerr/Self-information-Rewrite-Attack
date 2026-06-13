@@ -21,8 +21,13 @@ def main():
     login(token=token, add_to_git_credential=False)
     print("Hugging Face login is ready.")
 
-    default_models = ["meta-llama/Llama-3.2-3B-Instruct"]
-    matrix_path = "config/model_matrix_l4.json"
+    default_models = [
+        "meta-llama/Llama-3.2-3B-Instruct",
+        "meta-llama/Meta-Llama-3-8B-Instruct",
+    ]
+    matrix_path = os.environ.get("SIRA_MODELS_CONFIG", "config/paper_models_l4.json")
+    if not os.path.exists(matrix_path):
+        matrix_path = "config/model_matrix_l4.json"
     if os.path.exists(matrix_path):
         with open(matrix_path, "r", encoding="utf-8") as input_file:
             default_models = [item["model_name"] for item in json.load(input_file)]

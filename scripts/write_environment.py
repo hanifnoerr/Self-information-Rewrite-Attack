@@ -22,7 +22,7 @@ def main():
     parser.add_argument("--small_model", default="meta-llama/Meta-Llama-3-8B-Instruct")
     parser.add_argument("--generation_model", default="facebook/opt-1.3b")
     parser.add_argument("--tiny_quantization", default="bf16")
-    parser.add_argument("--small_quantization", default="4-bit NF4 with bf16 compute")
+    parser.add_argument("--small_quantization", default="bf16")
     parser.add_argument("--models_config", default="")
     args = parser.parse_args()
 

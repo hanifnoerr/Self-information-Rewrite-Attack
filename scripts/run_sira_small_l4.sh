@@ -8,6 +8,7 @@ SAMPLES="${SAMPLES:-10}"
 GENERATION_MODEL="${GENERATION_MODEL:-facebook/opt-1.3b}"
 ATTACK_MODEL="${SMALL_MODEL:-meta-llama/Meta-Llama-3-8B-Instruct}"
 GENERATED_TOKENS="${GENERATED_TOKENS:-230}"
+LOAD_IN_4BIT="${LOAD_IN_4BIT:-false}"
 
 WATERMARK_DIR="${OUTPUT_ROOT}/watermarked"
 SMALL_DIR="${OUTPUT_ROOT}/sira_small"
@@ -23,7 +24,12 @@ exec > >(tee -a "${LOG_FILE}") 2>&1
 trap 'status=$?; echo "[ERROR] SIRA-Small failed at line ${LINENO} with exit status ${status}. Log: ${LOG_FILE}"; exit ${status}' ERR
 
 echo "Running SIRA-Small with ${ATTACK_MODEL}"
-echo "Algorithm=${ALGORITHM}, samples=${SAMPLES}, threshold=30, quantization=4-bit NF4"
+QUANTIZATION_ARGS=()
+if [[ "${LOAD_IN_4BIT}" == "true" ]]; then
+  QUANTIZATION_ARGS+=(--load_in_4bit)
+fi
+
+echo "Algorithm=${ALGORITHM}, samples=${SAMPLES}, threshold=30, load_in_4bit=${LOAD_IN_4BIT}"
 
 echo "=== Stage 0: Generate watermarked data ==="
 python scripts/generate_watermark.py \
@@ -48,7 +54,7 @@ python scripts/pre_attack.py \
   --gpu 0 \
   --algorithms "${ALGORITHM}" \
   --dtype bf16 \
-  --load_in_4bit \
+  "${QUANTIZATION_ARGS[@]}" \
   --max_samples "${SAMPLES}" \
   --seed 42
 
@@ -60,7 +66,7 @@ python scripts/attack.py \
   --gpu 0 \
   --algorithms "${ALGORITHM}" \
   --dtype bf16 \
-  --load_in_4bit \
+  "${QUANTIZATION_ARGS[@]}" \
   --max_samples "${SAMPLES}" \
   --seed 42
 

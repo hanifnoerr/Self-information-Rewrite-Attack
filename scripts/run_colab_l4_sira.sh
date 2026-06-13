@@ -44,6 +44,7 @@ pip install bitsandbytes tqdm"
 FILES_TO_UPLOAD=(
   "README_COLAB_SIRA.md"
   "requirements.txt"
+  "config/paper_models_l4.json"
   "config/model_matrix_l4.json"
   "scripts/model_utils.py"
   "scripts/generate_watermark.py"
@@ -72,7 +73,7 @@ run_remote "set -euo pipefail
 cd /content/Self-information-Rewrite-Attack
 export PYTHONPATH=/content/Self-information-Rewrite-Attack
 python scripts/run_model_matrix_l4.py \
-  --config_path /content/Self-information-Rewrite-Attack/config/model_matrix_l4.json \
+  --config_path /content/Self-information-Rewrite-Attack/config/paper_models_l4.json \
   --repo_dir /content/Self-information-Rewrite-Attack \
   --output_root /content/sira_outputs \
   --algorithm '${ALGORITHM}' \

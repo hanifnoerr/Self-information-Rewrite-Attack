@@ -14,6 +14,24 @@ PAPER_TINY_ASR = {
     "EXP": 0.906,
 }
 
+PAPER_SMALL_ASR = {
+    "KGW": 1.000,
+    "Unigram": 0.938,
+    "UPV": 0.930,
+    "EWD": 1.000,
+    "DIP": 0.998,
+    "SIR": 0.834,
+    "EXP": 0.934,
+}
+
+
+def get_paper_reference(label, algorithm):
+    if label == "llama_3_2_3b":
+        return "SIRA-Tiny", PAPER_TINY_ASR.get(algorithm)
+    if label == "llama_3_8b":
+        return "SIRA-Small", PAPER_SMALL_ASR.get(algorithm)
+    return None, None
+
 
 def load_json(path, default):
     if not os.path.exists(path):
@@ -93,6 +111,10 @@ def main():
         row for row in comparison_rows
         if row.get("method_type") == "SIRA"
     ]
+    sira_labels = {row.get("label") for row in sira_rows}
+    paper_reproduction_mode = bool(sira_labels) and sira_labels.issubset(
+        {"llama_3_2_3b", "llama_3_8b"}
+    )
     cognitive_row = next(
         (row for row in comparison_rows if row.get("label") == "cognitive_integrity_grid"),
         None,
@@ -117,11 +139,13 @@ def main():
 
     paper_style_rows = []
     for row in comparison_rows:
-        paper_asr = None
+        paper_method, paper_asr = get_paper_reference(row.get("label"), args.algorithm)
         note = "Cross-model SIRA transfer test."
-        if row.get("label") == "llama_3_2_3b":
-            paper_asr = PAPER_TINY_ASR.get(args.algorithm)
-            note = "Released-code Llama reference; compare cautiously with paper SIRA-Tiny."
+        if paper_method:
+            note = (
+                f"Released-code checkpoint for paper {paper_method}; compare cautiously unless "
+                "all paper settings match."
+            )
         elif row.get("label") == "cognitive_integrity_grid":
             note = (
                 "Grid-guided masking baseline. Trace verification measures structural "
@@ -142,6 +166,7 @@ def main():
         paper_style_rows.append(
             {
                 "method": row.get("display_name"),
+                "paper_method": paper_method,
                 "model_family": row.get("model_family"),
                 "parameter_size": row.get("parameter_size"),
                 "size_tier": row.get("size_tier"),
@@ -167,20 +192,32 @@ def main():
 
     report_path = os.path.join(args.output_root, "final_report.md")
     with open(report_path, "w", encoding="utf-8") as report:
-        report.write("# SIRA Cross-Model Transfer Report\n\n")
+        if paper_reproduction_mode:
+            report.write("# SIRA Paper-Model Reproduction Report\n\n")
+        else:
+            report.write("# SIRA Cross-Model Transfer Report\n\n")
         report.write("## Goal\n\n")
-        report.write(
-            "Test whether the same SIRA attack pipeline transfers across three LLM families and "
-            "three practical size tiers per family. This experiment can provide evidence of "
-            "transferability, but it cannot prove SIRA works on every LLM.\n\n"
-        )
+        if paper_reproduction_mode:
+            report.write(
+                "Compare the released-code SIRA-Tiny and SIRA-Small Llama checkpoints against "
+                "the attack success rates reported by the paper.\n\n"
+            )
+        else:
+            report.write(
+                "Test whether the same SIRA attack pipeline transfers across different LLM "
+                "families and practical size tiers. This can provide evidence of transferability, "
+                "but it cannot prove SIRA works on every LLM.\n\n"
+            )
 
         report.write("## Experiment\n\n")
         report.write(f"- Watermark algorithm: {args.algorithm}\n")
         report.write(f"- Samples: {args.samples}\n")
         report.write("- Shared watermarked data: OPT-1.3B generation on the same C4 subset\n")
         report.write("- SIRA threshold: 30\n")
-        report.write("- Model matrix: Llama, Gemma 4, and Qwen; three size tiers each\n")
+        if paper_reproduction_mode:
+            report.write("- Attack models: paper SIRA-Tiny 3B and SIRA-Small 8B configurations\n")
+        else:
+            report.write("- Attack models: configured cross-model transfer matrix\n")
         report.write(
             f"- Strong-transfer criterion: ASR >= {args.asr_threshold:.2f} and "
             f"semantic similarity >= {args.similarity_threshold:.2f}\n\n"
@@ -190,11 +227,17 @@ def main():
             "In particular, a 4-bit result should not be treated as a precision-controlled "
             "comparison with a bf16 result.\n\n"
         )
-        report.write(
-            "The small, medium, and large tiers are practical L4 tiers rather than perfectly "
-            "parameter-matched controls. Llama 8B is from Llama 3, Gemma E2B/E4B report "
-            "effective parameters, and Gemma 26B A4B is a mixture-of-experts model.\n\n"
-        )
+        if paper_reproduction_mode:
+            report.write(
+                "The paper describes Llama3 Instruct models with 3B and 8B parameters. The "
+                "released code identifies the intended 3B checkpoint as Llama 3.2 3B Instruct "
+                "and the 8B checkpoint as Meta-Llama-3-8B-Instruct.\n\n"
+            )
+        else:
+            report.write(
+                "The configured tiers are practical L4 tiers rather than perfectly "
+                "parameter-matched controls.\n\n"
+            )
 
         report.write("## Results\n\n")
         report.write("| method | family | tier | size | quantization | status | ASR | semantic similarity | average watermark score | failures | comparison criterion |\n")
@@ -209,22 +252,24 @@ def main():
             )
         report.write("\n")
 
-        llama_result = next(
-            (
-                row for row in sira_rows
-                if row.get("label") == "llama_3_2_3b"
-            ),
-            None,
-        )
-        paper_asr = PAPER_TINY_ASR.get(args.algorithm)
         report.write("## Paper Reference\n\n")
-        if llama_result and llama_result.get("attack_success_rate") is not None and paper_asr is not None:
-            difference = llama_result["attack_success_rate"] - paper_asr
-            report.write(f"- Paper SIRA-Tiny {args.algorithm} ASR: {paper_asr:.4f}\n")
-            report.write(f"- This Llama run ASR: {llama_result['attack_success_rate']:.4f}\n")
-            report.write(f"- Difference: {difference:.4f}\n")
+        for paper_label in ("llama_3_2_3b", "llama_3_8b"):
+            paper_method, paper_asr = get_paper_reference(paper_label, args.algorithm)
+            reproduced_row = next(
+                (row for row in sira_rows if row.get("label") == paper_label),
+                None,
+            )
+            if not reproduced_row or paper_asr is None:
+                continue
+            reproduced_asr = reproduced_row.get("attack_success_rate")
+            report.write(f"- Paper {paper_method} {args.algorithm} ASR: {paper_asr:.4f}\n")
+            report.write(f"- Reproduced {paper_method} ASR: {show(reproduced_asr)}\n")
             report.write(
-                "- This is not an exact reproduction unless sample count, subset, hardware, "
+                f"- Difference: {show(subtract_if_measured(reproduced_asr, paper_asr))}\n"
+            )
+        if sira_rows:
+            report.write(
+                "\n- These are not exact reproductions unless sample count, subset, hardware, "
                 "precision, package versions, and all generation settings match the paper.\n\n"
             )
 
@@ -294,7 +339,13 @@ def main():
             report.write("The Cognitive Integrity Grid baseline was not evaluated.\n\n")
 
         report.write("## Honest Conclusion\n\n")
-        if tested_non_llama and len(passing_non_llama) == len(tested_non_llama):
+        if paper_reproduction_mode:
+            report.write(
+                "This run directly tests the two smaller attack-model configurations reported "
+                "by the paper. Interpret similarity to the paper only after checking both the "
+                "sample count and the numerical ASR differences above.\n"
+            )
+        elif tested_non_llama and len(passing_non_llama) == len(tested_non_llama):
             report.write(
                 "Both tested non-Llama model families met the chosen attack-success and semantic-similarity "
                 "thresholds. This is strong evidence that SIRA transfers beyond Llama for these settings. "
