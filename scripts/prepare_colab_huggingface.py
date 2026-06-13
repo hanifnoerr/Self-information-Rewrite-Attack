@@ -1,7 +1,7 @@
 import os
 import sys
 
-from huggingface_hub import HfApi, login
+from huggingface_hub import hf_hub_download, login
 
 
 def main():
@@ -19,8 +19,7 @@ def main():
             sys.exit(2)
 
     login(token=token, add_to_git_credential=False)
-    user = HfApi().whoami(token=token)
-    print(f"Hugging Face login is ready for: {user.get('name', 'unknown user')}")
+    print("Hugging Face login is ready.")
 
     models = [
         "meta-llama/Llama-3.2-3B-Instruct",
@@ -28,11 +27,12 @@ def main():
     ]
     for model_name in models:
         try:
-            HfApi().model_info(model_name, token=token)
+            hf_hub_download(model_name, "config.json", token=token)
             print(f"Model access OK: {model_name}")
         except Exception as error:
             print(f"Model access failed: {model_name}")
-            print("Accept the Meta Llama license on Hugging Face or replace the model name.")
+            print("Request access using the same Hugging Face account that owns HF_TOKEN.")
+            print("After approval, create a new read token and update the Colab HF_TOKEN secret.")
             print(error)
             sys.exit(3)
 

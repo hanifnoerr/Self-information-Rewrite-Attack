@@ -71,6 +71,8 @@ def main():
     parser.add_argument("--dataset", default="C4 trim_c4_500.json")
     parser.add_argument("--samples", type=int, default=500)
     parser.add_argument("--generation_model", default="facebook/opt-1.3b")
+    parser.add_argument("--tiny_model", default="meta-llama/Llama-3.2-3B-Instruct")
+    parser.add_argument("--small_model", default="meta-llama/Meta-Llama-3-8B-Instruct")
     args = parser.parse_args()
 
     results_dir = os.path.join(args.output_root, "results")
@@ -130,8 +132,8 @@ def main():
         report.write(f"- PyTorch: {environment.get('torch_version', 'not recorded')}\n")
         report.write(f"- Transformers: {environment.get('transformers_version', 'not recorded')}\n")
         report.write(f"- Generation model: {args.generation_model}\n")
-        report.write("- SIRA-Tiny: meta-llama/Llama-3.2-3B-Instruct, bf16 by default\n")
-        report.write("- SIRA-Small: meta-llama/Meta-Llama-3-8B-Instruct, 4-bit NF4 by default on L4\n\n")
+        report.write(f"- SIRA-Tiny: {args.tiny_model}, bf16 by default\n")
+        report.write(f"- SIRA-Small: {args.small_model}, 4-bit NF4 by default on L4\n\n")
 
         report.write("## 2. Data\n\n")
         report.write(f"- Dataset: {args.dataset}\n")

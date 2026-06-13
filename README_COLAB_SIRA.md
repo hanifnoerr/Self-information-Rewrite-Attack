@@ -78,6 +78,21 @@ Hugging Face, then add a Colab Secret named `HF_TOKEN` and grant notebook access
 The script `scripts/prepare_colab_huggingface.py` prints a clear error if the
 token or model permission is missing.
 
+The paper says SIRA-Tiny, SIRA-Small, and SIRA-Large use Llama3 Instruct models
+with 3B, 8B, and 70B parameters. It does not print exact Hugging Face repository
+IDs. The released `pre_attack.py` defaults to
+`meta-llama/Llama-3.2-3B-Instruct`, which is the strongest evidence for the
+intended SIRA-Tiny checkpoint. The released README and one-step script use
+`meta-llama/Meta-Llama-3-8B-Instruct` for SIRA-Small.
+
+Model approval must belong to the same Hugging Face account that created the
+`HF_TOKEN`. After access is approved, create a fresh read token and update the
+Colab Secret.
+
+You can change `TINY_MODEL` in the notebook to an accessible 3B instruct model,
+but that becomes an adapted SIRA experiment rather than an exact paper
+reproduction.
+
 Requested models:
 
 ```text
