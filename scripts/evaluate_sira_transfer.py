@@ -117,13 +117,6 @@ def save_json(path, data):
         json.dump(data, output_file, indent=2, ensure_ascii=False)
 
 
-def save_jsonl(path, items):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as output_file:
-        for item in items:
-            output_file.write(json.dumps(item, ensure_ascii=False) + "\n")
-
-
 def save_csv(path, rows):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     fieldnames = []
@@ -147,6 +140,7 @@ def main():
     parser.add_argument("--watermarked_input", required=True)
     parser.add_argument("--models_config", required=True)
     parser.add_argument("--coda_input", default="")
+    parser.add_argument("--spia_input", default="")
     parser.add_argument("--coda_model", default="meta-llama/Llama-3.2-3B-Instruct")
     parser.add_argument("--coda_quantization", default="bf16")
     parser.add_argument("--output_root", default="/content/sira_outputs")
@@ -188,37 +182,6 @@ def main():
         }
     )
 
-    prefix_only_items = [
-        {
-            **item,
-            "attack_text": f"student_id: 35571241\n{item.get('watermarked_text', '')}",
-        }
-        for item in original_items
-    ]
-    prefix_only_path = os.path.join(
-        args.output_root,
-        "student_id_prefix_only",
-        "prefix_only.jsonl",
-    )
-    save_jsonl(prefix_only_path, prefix_only_items)
-    prefix_only_result = evaluate_items(
-        prefix_only_items,
-        "attack_text",
-        watermark,
-        similarity_model,
-    )
-    prefix_only_record = {
-        "label": "student_id_prefix_only",
-        "display_name": "Student-ID Prefix Only",
-        "method_type": "Prefix-only control",
-        "model_family": "N/A",
-        "model_name": "No rewrite model",
-        "parameter_size": "N/A",
-        "size_tier": "Control",
-        "quantization": "N/A",
-        "attack_path": prefix_only_path,
-        **prefix_only_result,
-    }
     for model_run in model_runs:
         attack_items = []
         if model_run.get("run_status") in {None, "completed"}:
@@ -270,13 +233,36 @@ def main():
         }
         results.append(coda_record)
 
-    results.append(prefix_only_record)
+    spia_record = None
+    spia_items = read_jsonl(args.spia_input, args.max_samples)
+    if spia_items:
+        print(f"Evaluating SPIA: {len(spia_items)} samples")
+        spia_result = evaluate_items(
+            spia_items,
+            "attack_text",
+            watermark,
+            similarity_model,
+        )
+        spia_record = {
+            "label": "spia",
+            "display_name": "SPIA - Student-ID Prefix Injection Attack",
+            "method_type": "SPIA",
+            "model_family": "N/A",
+            "model_name": "No rewrite model",
+            "parameter_size": "N/A",
+            "size_tier": "Proposed method",
+            "quantization": "N/A",
+            "attack_path": args.spia_input,
+            **spia_result,
+        }
+        results.append(spia_record)
 
     results_dir = os.path.join(args.output_root, "results")
     save_json(os.path.join(results_dir, "transfer_eval.json"), results)
     save_csv(os.path.join(results_dir, "transfer_eval.csv"), results)
-    save_json(os.path.join(results_dir, "student_id_prefix_only_eval.json"), prefix_only_record)
-    save_csv(os.path.join(results_dir, "student_id_prefix_only_eval.csv"), [prefix_only_record])
+    if spia_record:
+        save_json(os.path.join(results_dir, "spia_eval.json"), spia_record)
+        save_csv(os.path.join(results_dir, "spia_eval.csv"), [spia_record])
     if coda_record:
         save_json(os.path.join(results_dir, "coda_eval.json"), coda_record)
         save_csv(os.path.join(results_dir, "coda_eval.csv"), [coda_record])

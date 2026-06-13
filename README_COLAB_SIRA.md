@@ -1,9 +1,22 @@
-# SIRA Paper Models and CoDA on Google Colab L4
+# SIRA, CoDA, and SPIA on Google Colab L4
 
 This adaptation runs the official SIRA workflow using the two smaller attack
 models reported by the paper and compares them with the proposed Context-Anchor
-Desynchronization Attack (CoDA). It runs entirely on a Google Colab L4 GPU; the
-local laptop GPU is not used.
+Desynchronization Attack (CoDA) and Student-ID Prefix Injection Attack (SPIA).
+It runs entirely on a Google Colab L4 GPU; the local laptop GPU is not used.
+
+## Three Attack Methods
+
+1. **SIRA** rewrites high-self-information tokens. It is evaluated with the
+   paper's Tiny and Small model configurations.
+2. **CoDA** changes low-information context anchors immediately before
+   suspicious tokens.
+3. **SPIA** prepends `student_id: 35571241` to the untouched watermarked text.
+
+SIRA and CoDA responses do not contain the student-ID prefix.
+
+The final dataframe has four rows because SIRA is evaluated with two model
+configurations, but the `attack_method` column groups them into three methods.
 
 [Open the paper-model notebook in Google Colab](https://colab.research.google.com/github/hanifnoerr/Self-information-Rewrite-Attack/blob/codex/browser-colab-l4/SIRA_COLAB_L4.ipynb)
 
@@ -87,16 +100,12 @@ Every model receives:
 - the same SIRA threshold of 30;
 - the same greedy rewrite workflow.
 
-Every final SIRA and CoDA attack response begins with:
+SPIA is an independent attack. It prepends the following line without rewriting
+the original watermarked response:
 
 ```text
 student_id: 35571241
 ```
-
-This prefix is applied equally to the compared attacks. It is still a
-confounding text change and must be documented when interpreting results. The
-evaluation therefore includes a `Student-ID Prefix Only` control that prepends
-the ID without changing the original watermarked text.
 
 Each model writes to `/content/sira_outputs/sira_models/<model-label>/`:
 
@@ -116,8 +125,8 @@ The transfer report includes:
 - failed samples;
 - quantization and model family.
 - CoDA average anchor count and anchor rate;
-- student-ID prefix-only control results.
-- attack-success improvement over the prefix-only control.
+- SPIA attack-success and semantic-similarity results.
+- attack-success difference between CoDA and SPIA.
 
 The default strong-transfer criterion is:
 
@@ -165,20 +174,41 @@ Important limitation: an instruction-following model may make edits beyond the
 marked anchors. Semantic similarity and the recorded anchor rate must therefore
 be checked alongside attack success.
 
+## SPIA
+
+SPIA does not use an LLM. It leaves the watermarked response unchanged and
+prepends one unrelated context line:
+
+```text
+student_id: 35571241
+```
+
+Run it directly:
+
+```bash
+python scripts/run_spia_attack.py \
+  --input_path /content/sira_outputs/watermarked/KGW_response.json \
+  --output_path /content/sira_outputs/spia/student_id_prefix_attack.jsonl \
+  --max_samples 10
+```
+
+If SPIA lowers the detector score, the effect comes from context-prefix
+injection rather than paraphrasing or anchor rewriting.
+
 ## Outputs
 
 ```text
 /content/sira_outputs/model_runs.json
 /content/sira_outputs/coda/coda_attack.jsonl
-/content/sira_outputs/student_id_prefix_only/prefix_only.jsonl
+/content/sira_outputs/spia/student_id_prefix_attack.jsonl
 /content/sira_outputs/results/transfer_eval.json
 /content/sira_outputs/results/transfer_eval.csv
 /content/sira_outputs/results/transfer_comparison.json
 /content/sira_outputs/results/transfer_comparison.csv
 /content/sira_outputs/results/coda_eval.json
 /content/sira_outputs/results/coda_eval.csv
-/content/sira_outputs/results/student_id_prefix_only_eval.json
-/content/sira_outputs/results/student_id_prefix_only_eval.csv
+/content/sira_outputs/results/spia_eval.json
+/content/sira_outputs/results/spia_eval.csv
 /content/sira_outputs/results/paper_style_comparison.json
 /content/sira_outputs/results/paper_style_comparison.csv
 /content/sira_outputs/final_report.md

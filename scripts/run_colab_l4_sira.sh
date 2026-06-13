@@ -54,6 +54,7 @@ FILES_TO_UPLOAD=(
   "scripts/run_sira_model_l4.sh"
   "scripts/run_model_matrix_l4.py"
   "scripts/run_coda_attack.py"
+  "scripts/run_spia_attack.py"
   "scripts/evaluate_sira_transfer.py"
   "scripts/compare_transfer_results.py"
   "scripts/write_environment.py"
@@ -86,6 +87,11 @@ python scripts/run_coda_attack.py \
   --dtype bf16 \
   --max_samples '${SAMPLES}'
 
+python scripts/run_spia_attack.py \
+  --input_path '/content/sira_outputs/watermarked/${ALGORITHM}_response.json' \
+  --output_path /content/sira_outputs/spia/student_id_prefix_attack.jsonl \
+  --max_samples '${SAMPLES}'
+
 python scripts/write_environment.py \
   --output_path /content/sira_outputs/environment.json \
   --models_config /content/sira_outputs/model_runs.json
@@ -96,6 +102,7 @@ python scripts/evaluate_sira_transfer.py \
   --watermarked_input '/content/sira_outputs/watermarked/${ALGORITHM}_response.json' \
   --models_config /content/sira_outputs/model_runs.json \
   --coda_input /content/sira_outputs/coda/coda_attack.jsonl \
+  --spia_input /content/sira_outputs/spia/student_id_prefix_attack.jsonl \
   --output_root /content/sira_outputs \
   --dtype bf16 \
   --max_samples '${SAMPLES}'

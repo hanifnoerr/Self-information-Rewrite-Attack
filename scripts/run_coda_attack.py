@@ -10,15 +10,7 @@ from tqdm import tqdm
 from model_utils import generate_chat_text, get_text_tokenizer, load_model_and_tokenizer
 
 
-STUDENT_ID_PREFIX = "student_id: 35571241"
 ANCHOR_MARKER = "[ANCHOR]"
-
-
-def add_student_id_prefix(text):
-    clean_text = text.strip()
-    if clean_text.startswith(STUDENT_ID_PREFIX):
-        return clean_text
-    return f"{STUDENT_ID_PREFIX}\n{clean_text}"
 
 
 def build_coda_prompt(marked_text):
@@ -185,12 +177,11 @@ def main():
 
             result = {
                 "id": item_id,
-                "student_id": "35571241",
                 "prompt": item.get("prompt", ""),
                 "watermarked_text": watermarked_text,
                 "unwatermarked_text": item.get("unwatermarked_text", ""),
                 "marked_text": marked_text,
-                "attack_text": add_student_id_prefix(generated_text),
+                "attack_text": generated_text,
                 "suspicious_token_indexes": suspicious_indexes,
                 "suspicious_tokens": suspicious_tokens,
                 "anchor_token_indexes": anchor_indexes,

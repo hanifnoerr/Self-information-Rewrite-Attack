@@ -119,8 +119,8 @@ def main():
         (row for row in comparison_rows if row.get("label") == "coda"),
         None,
     )
-    prefix_only_row = next(
-        (row for row in comparison_rows if row.get("label") == "student_id_prefix_only"),
+    spia_row = next(
+        (row for row in comparison_rows if row.get("label") == "spia"),
         None,
     )
     passing_non_llama = [
@@ -138,26 +138,26 @@ def main():
     ]
 
     paper_style_rows = []
-    prefix_only_asr = (
-        prefix_only_row.get("attack_success_rate") if prefix_only_row else None
+    spia_asr = (
+        spia_row.get("attack_success_rate") if spia_row else None
     )
     for row in comparison_rows:
         paper_method, paper_asr = get_paper_reference(row.get("label"), args.algorithm)
         note = "Cross-model SIRA transfer test."
         if paper_method:
             note = (
-                f"Released-code checkpoint for paper {paper_method}; required student-ID prefix "
-                "and other setting differences prevent an exact comparison."
+                f"Released-code checkpoint for paper {paper_method}; compare cautiously unless "
+                "all paper settings match."
             )
         elif row.get("label") == "coda":
             note = (
                 "Proposed CoDA method. It changes low-information anchor tokens before "
                 "high-information targets; it was not evaluated by the paper."
             )
-        elif row.get("label") == "student_id_prefix_only":
+        elif row.get("label") == "spia":
             note = (
-                "Control that adds the required student-ID prefix to untouched watermarked text. "
-                "It isolates the prefix effect."
+                "Proposed SPIA method. It prepends student_id: 35571241 to untouched "
+                "watermarked text; it was not evaluated by the paper."
             )
         if row.get("run_status") in {"skipped_access", "failed"}:
             error_lines = row.get("run_error", "").splitlines()
@@ -170,6 +170,7 @@ def main():
         paper_style_rows.append(
             {
                 "method": row.get("display_name"),
+                "attack_method": row.get("method_type"),
                 "paper_method": paper_method,
                 "model_family": row.get("model_family"),
                 "parameter_size": row.get("parameter_size"),
@@ -180,8 +181,8 @@ def main():
                 "paper_attack_success_rate": paper_asr,
                 "reproduced_attack_success_rate": reproduced_asr,
                 "difference": difference,
-                "prefix_only_attack_success_rate": prefix_only_asr,
-                "asr_minus_prefix_only": subtract_if_measured(reproduced_asr, prefix_only_asr),
+                "spia_attack_success_rate": spia_asr,
+                "asr_minus_spia": subtract_if_measured(reproduced_asr, spia_asr),
                 "semantic_similarity": row.get("semantic_similarity"),
                 "average_anchor_count": row.get("average_anchor_count"),
                 "average_anchor_rate": row.get("average_anchor_rate"),
@@ -206,7 +207,7 @@ def main():
             report.write(
                 "Compare the released-code SIRA-Tiny and SIRA-Small Llama checkpoints against "
                 "the attack success rates reported by the paper, then compare the proposed CoDA "
-                "anchor-desynchronization attack against them.\n\n"
+                "anchor-desynchronization and SPIA prefix-injection attacks against them.\n\n"
             )
         else:
             report.write(
@@ -220,7 +221,7 @@ def main():
         report.write(f"- Samples: {args.samples}\n")
         report.write("- Shared watermarked data: OPT-1.3B generation on the same C4 subset\n")
         report.write("- SIRA threshold: 30\n")
-        report.write("- Every attacked response begins with: student_id: 35571241\n")
+        report.write("- Compared methods: SIRA, CoDA, and SPIA\n")
         if paper_reproduction_mode:
             report.write("- Attack models: paper SIRA-Tiny 3B and SIRA-Small 8B configurations\n")
         else:
@@ -235,9 +236,8 @@ def main():
             "comparison with a bf16 result.\n\n"
         )
         report.write(
-            "The required student-ID prefix is also a comparison confounder because the paper "
-            "did not add it. It is applied consistently to every reproduced attack response, "
-            "but paper comparisons must still be interpreted cautiously.\n\n"
+            "SPIA is evaluated as an independent attack. SIRA and CoDA outputs do not contain "
+            "the student-ID prefix.\n\n"
         )
         if paper_reproduction_mode:
             report.write(
@@ -252,12 +252,13 @@ def main():
             )
 
         report.write("## Results\n\n")
-        report.write("| method | family | tier | size | quantization | status | ASR | semantic similarity | average watermark score | failures | comparison criterion |\n")
-        report.write("|---|---|---|---:|---|---|---:|---:|---:|---:|---|\n")
+        report.write("| attack method | configuration | family | tier | size | quantization | status | ASR | semantic similarity | average watermark score | failures | comparison criterion |\n")
+        report.write("|---|---|---|---|---:|---|---|---:|---:|---:|---:|---|\n")
         for row in comparison_rows:
             report.write(
-                f"| {row['display_name']} | {row['model_family']} | {row.get('size_tier', 'N/A')} | "
-                f"{row['parameter_size']} | {row['quantization']} | {row.get('run_status', 'completed')} | "
+                f"| {row.get('method_type', 'N/A')} | {row['display_name']} | {row['model_family']} | "
+                f"{row.get('size_tier', 'N/A')} | {row['parameter_size']} | {row['quantization']} | "
+                f"{row.get('run_status', 'completed')} | "
                 f"{show(row['attack_success_rate'])} | "
                 f"{show(row['semantic_similarity'])} | {show(row['average_watermark_score'])} | "
                 f"{row['failed_samples']} | {'pass' if row['transfer_threshold_pass'] else 'fail'} |\n"
@@ -303,9 +304,6 @@ def main():
                 f"- Average anchor rate: {show(coda_row.get('average_anchor_rate'))}\n"
             )
             report.write(
-                f"- Student-ID prefix rate: {show(coda_row.get('student_id_prefix_rate'))}\n\n"
-            )
-            report.write(
                 "CoDA leaves each selected high-self-information target token visible and asks "
                 "the rewrite model to replace a low-self-information anchor immediately before "
                 "it. For KGW with prefix length 1, changing the previous token changes the "
@@ -315,21 +313,24 @@ def main():
         else:
             report.write("CoDA was not evaluated.\n\n")
 
-        report.write("## Student-ID Prefix Control\n\n")
-        if prefix_only_row:
+        report.write("## SPIA Proposed Attack\n\n")
+        if spia_row:
             report.write(
-                f"- Prefix-only attack success rate: {show(prefix_only_row.get('attack_success_rate'))}\n"
+                f"- Attack success rate: {show(spia_row.get('attack_success_rate'))}\n"
             )
             report.write(
-                f"- Prefix-only semantic similarity: {show(prefix_only_row.get('semantic_similarity'))}\n\n"
+                f"- Semantic similarity: {show(spia_row.get('semantic_similarity'))}\n"
             )
             report.write(
-                "This control adds the required student-ID prefix to the original watermarked "
-                "text without rewriting it. If this row has a high ASR, part of the apparent "
-                "CoDA or SIRA success may come from the prefix rather than the attack itself.\n\n"
+                f"- Student-ID prefix rate: {show(spia_row.get('student_id_prefix_rate'))}\n\n"
+            )
+            report.write(
+                "SPIA prepends `student_id: 35571241` to the original watermarked text without "
+                "rewriting it. It tests whether adding an unrelated context prefix is sufficient "
+                "to lower the watermark detector score.\n\n"
             )
         else:
-            report.write("The student-ID prefix-only control was not evaluated.\n\n")
+            report.write("SPIA was not evaluated.\n\n")
 
         report.write("## Honest Conclusion\n\n")
         if coda_row and coda_row.get("attack_success_rate") is not None:
@@ -357,12 +358,10 @@ def main():
                     f"CoDA ASR minus reproduced SIRA-Tiny ASR: "
                     f"{show(subtract_if_measured(coda_row.get('attack_success_rate'), tiny_row.get('attack_success_rate')))}.\n\n"
                 )
-            if prefix_only_row and prefix_only_row.get("attack_success_rate") is not None:
+            if spia_row and spia_row.get("attack_success_rate") is not None:
                 report.write(
-                    f"CoDA ASR minus prefix-only ASR: "
-                    f"{show(subtract_if_measured(coda_row.get('attack_success_rate'), prefix_only_row.get('attack_success_rate')))}. "
-                    "A positive difference is evidence that anchor changes add value beyond the "
-                    "required prefix.\n\n"
+                    f"CoDA ASR minus SPIA ASR: "
+                    f"{show(subtract_if_measured(coda_row.get('attack_success_rate'), spia_row.get('attack_success_rate')))}.\n\n"
                 )
 
         if paper_reproduction_mode:
