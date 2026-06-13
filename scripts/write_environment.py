@@ -23,7 +23,13 @@ def main():
     parser.add_argument("--generation_model", default="facebook/opt-1.3b")
     parser.add_argument("--tiny_quantization", default="bf16")
     parser.add_argument("--small_quantization", default="4-bit NF4 with bf16 compute")
+    parser.add_argument("--models_config", default="")
     args = parser.parse_args()
+
+    attack_models = []
+    if args.models_config and os.path.exists(args.models_config):
+        with open(args.models_config, "r", encoding="utf-8") as input_file:
+            attack_models = json.load(input_file)
 
     data = {
         "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "No CUDA GPU",
@@ -46,6 +52,7 @@ def main():
             "sira_tiny": args.tiny_quantization,
             "sira_small": args.small_quantization,
         },
+        "attack_models": attack_models,
     }
 
     os.makedirs(os.path.dirname(args.output_path), exist_ok=True)

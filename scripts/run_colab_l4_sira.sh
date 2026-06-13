@@ -48,13 +48,9 @@ FILES_TO_UPLOAD=(
   "scripts/pre_attack.py"
   "scripts/attack.py"
   "scripts/prepare_colab_huggingface.py"
-  "scripts/run_sira_tiny_l4.sh"
-  "scripts/run_sira_small_l4.sh"
-  "scripts/run_base64_baseline.py"
-  "scripts/decode_base64_outputs.py"
-  "scripts/create_base64_side_by_side.py"
-  "scripts/evaluate_base64_baseline.py"
-  "scripts/compare_results.py"
+  "scripts/run_sira_model_l4.sh"
+  "scripts/evaluate_sira_transfer.py"
+  "scripts/compare_transfer_results.py"
   "scripts/write_environment.py"
 )
 
@@ -70,52 +66,56 @@ colab exec -s "${SESSION_NAME}" -f "${LOCAL_REPO}/scripts/prepare_colab_huggingf
 run_remote "set -euo pipefail
 cd /content/Self-information-Rewrite-Attack
 export PYTHONPATH=/content/Self-information-Rewrite-Attack
-python scripts/write_environment.py
-ALGORITHM='${ALGORITHM}' SAMPLES='${SAMPLES}' bash scripts/run_sira_tiny_l4.sh
-ALGORITHM='${ALGORITHM}' SAMPLES='${SAMPLES}' bash scripts/run_sira_small_l4.sh
+MODEL_NAME=meta-llama/Llama-3.2-3B-Instruct MODEL_LABEL=llama_3_2_3b LOAD_IN_4BIT=false ALGORITHM='${ALGORITHM}' SAMPLES='${SAMPLES}' bash scripts/run_sira_model_l4.sh
+MODEL_NAME=google/gemma-2-2b-it MODEL_LABEL=gemma_2_2b LOAD_IN_4BIT=false ALGORITHM='${ALGORITHM}' SAMPLES='${SAMPLES}' bash scripts/run_sira_model_l4.sh
+MODEL_NAME=Qwen/Qwen2.5-7B-Instruct MODEL_LABEL=qwen_2_5_7b LOAD_IN_4BIT=true ALGORITHM='${ALGORITHM}' SAMPLES='${SAMPLES}' bash scripts/run_sira_model_l4.sh
 
-python scripts/run_base64_baseline.py \
-  --input_path '/content/sira_outputs/watermarked/${ALGORITHM}_response.json' \
-  --output_root /content/sira_outputs \
-  --algorithm '${ALGORITHM}' \
-  --model_name meta-llama/Llama-3.2-3B-Instruct \
-  --dtype bf16 \
-  --run_normal_paraphrase \
-  --max_samples '${SAMPLES}'
+cat > /content/sira_outputs/model_runs.json <<'JSON'
+[
+  {
+    \"label\": \"llama_3_2_3b\",
+    \"display_name\": \"Llama 3.2 3B Instruct\",
+    \"model_family\": \"Llama\",
+    \"model_name\": \"meta-llama/Llama-3.2-3B-Instruct\",
+    \"parameter_size\": \"3B\",
+    \"quantization\": \"bf16\",
+    \"attack_path\": \"/content/sira_outputs/sira_models/llama_3_2_3b/final/${ALGORITHM}_attack.json\"
+  },
+  {
+    \"label\": \"gemma_2_2b\",
+    \"display_name\": \"Gemma 2 2B IT\",
+    \"model_family\": \"Gemma\",
+    \"model_name\": \"google/gemma-2-2b-it\",
+    \"parameter_size\": \"2B\",
+    \"quantization\": \"bf16\",
+    \"attack_path\": \"/content/sira_outputs/sira_models/gemma_2_2b/final/${ALGORITHM}_attack.json\"
+  },
+  {
+    \"label\": \"qwen_2_5_7b\",
+    \"display_name\": \"Qwen 2.5 7B Instruct\",
+    \"model_family\": \"Qwen\",
+    \"model_name\": \"Qwen/Qwen2.5-7B-Instruct\",
+    \"parameter_size\": \"7B\",
+    \"quantization\": \"4-bit NF4 with bf16 compute\",
+    \"attack_path\": \"/content/sira_outputs/sira_models/qwen_2_5_7b/final/${ALGORITHM}_attack.json\"
+  }
+]
+JSON
 
-python scripts/decode_base64_outputs.py \
-  --input_path /content/sira_outputs/base64_llm/base64_llm_raw.jsonl \
-  --output_path /content/sira_outputs/base64_llm/base64_llm_decoded.jsonl
+python scripts/write_environment.py \
+  --output_path /content/sira_outputs/environment.json \
+  --models_config /content/sira_outputs/model_runs.json
 
-python scripts/create_base64_side_by_side.py \
-  --raw_original /content/sira_outputs/base64/base64_raw.jsonl \
-  --decoded_original /content/sira_outputs/base64/base64_decoded.jsonl \
-  --llm_raw /content/sira_outputs/base64_llm/base64_llm_raw.jsonl \
-  --llm_decoded /content/sira_outputs/base64_llm/base64_llm_decoded.jsonl \
-  --normal_paraphrase /content/sira_outputs/normal_paraphrase/normal_paraphrase.jsonl \
-  --external_raw /content/sira_outputs/base64_llm/normal_paraphrase_base64_raw.jsonl \
-  --external_decoded /content/sira_outputs/base64_llm/normal_paraphrase_base64_decoded.jsonl \
-  --output_jsonl /content/sira_outputs/base64_llm/base64_side_by_side.jsonl \
-  --output_csv /content/sira_outputs/base64_llm/base64_side_by_side.csv
-
-python scripts/evaluate_base64_baseline.py \
+python scripts/evaluate_sira_transfer.py \
   --generation_model facebook/opt-1.3b \
   --algorithm '${ALGORITHM}' \
   --watermarked_input '/content/sira_outputs/watermarked/${ALGORITHM}_response.json' \
-  --sira_tiny_input '/content/sira_outputs/sira_tiny/final/${ALGORITHM}_attack.json' \
-  --sira_small_input '/content/sira_outputs/sira_small/final/${ALGORITHM}_attack.json' \
-  --base64_raw_input /content/sira_outputs/base64/base64_raw.jsonl \
-  --base64_decoded_input /content/sira_outputs/base64/base64_decoded.jsonl \
-  --base64_llm_raw_input /content/sira_outputs/base64_llm/base64_llm_raw.jsonl \
-  --base64_llm_decoded_input /content/sira_outputs/base64_llm/base64_llm_decoded.jsonl \
-  --normal_paraphrase_input /content/sira_outputs/normal_paraphrase/normal_paraphrase.jsonl \
-  --normal_paraphrase_base64_raw_input /content/sira_outputs/base64_llm/normal_paraphrase_base64_raw.jsonl \
-  --normal_paraphrase_base64_decoded_input /content/sira_outputs/base64_llm/normal_paraphrase_base64_decoded.jsonl \
+  --models_config /content/sira_outputs/model_runs.json \
   --output_root /content/sira_outputs \
   --dtype bf16 \
   --max_samples '${SAMPLES}'
 
-python scripts/compare_results.py \
+python scripts/compare_transfer_results.py \
   --output_root /content/sira_outputs \
   --algorithm '${ALGORITHM}' \
   --samples '${SAMPLES}'

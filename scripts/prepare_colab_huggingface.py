@@ -21,18 +21,24 @@ def main():
     login(token=token, add_to_git_credential=False)
     print("Hugging Face login is ready.")
 
-    models = [
+    default_models = [
         "meta-llama/Llama-3.2-3B-Instruct",
-        "meta-llama/Meta-Llama-3-8B-Instruct",
+        "google/gemma-2-2b-it",
+        "Qwen/Qwen2.5-7B-Instruct",
     ]
+    model_names = os.environ.get("SIRA_MODEL_NAMES", "")
+    models = [name.strip() for name in model_names.split(",") if name.strip()]
+    if not models:
+        models = default_models
+
     for model_name in models:
         try:
             hf_hub_download(model_name, "config.json", token=token)
             print(f"Model access OK: {model_name}")
         except Exception as error:
             print(f"Model access failed: {model_name}")
-            print("Request access using the same Hugging Face account that owns HF_TOKEN.")
-            print("After approval, create a new read token and update the Colab HF_TOKEN secret.")
+            print("Accept the model terms, if required, using the account that owns HF_TOKEN.")
+            print("Then update the Colab HF_TOKEN secret with a current read token.")
             print(error)
             sys.exit(3)
 
