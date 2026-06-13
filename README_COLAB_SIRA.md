@@ -13,9 +13,16 @@ Open the included notebook in Colab:
 
 [Open SIRA_COLAB_L4.ipynb in Google Colab](https://colab.research.google.com/github/hanifnoerr/Self-information-Rewrite-Attack/blob/codex/browser-colab-l4/SIRA_COLAB_L4.ipynb)
 
-In Colab, choose **Runtime > Change runtime type > L4 GPU**, add a Colab Secret
-named `HF_TOKEN`, and run the cells from top to bottom. The notebook starts with
-10 KGW samples and copies final outputs to Google Drive.
+In Colab, choose **Runtime > Change runtime type > L4 GPU** and run the cells
+from top to bottom. An `HF_TOKEN` Secret is optional for the public smoke-test
+model. The notebook starts with 10 KGW samples and copies final outputs to
+Google Drive.
+
+The browser notebook currently defaults to the public
+`Qwen/Qwen2.5-3B-Instruct` checkpoint and enables the LLM Base64 baseline. This
+is intended to verify that the complete pipeline works without waiting for Meta
+Llama approval. It is an adapted SIRA experiment, not an exact paper
+reproduction.
 
 If a SIRA runner fails, inspect its stage log:
 

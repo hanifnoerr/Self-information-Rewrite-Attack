@@ -89,6 +89,17 @@ def main():
         reproduced = result_by_method.get(method, {}).get("attack_success_rate")
         difference = reproduced - paper_value if reproduced is not None and paper_value is not None else None
         note = verdict(difference)
+        expected_model = (
+            "meta-llama/Llama-3.2-3B-Instruct"
+            if method == "SIRA-Tiny"
+            else "meta-llama/Meta-Llama-3-8B-Instruct"
+        )
+        actual_model = args.tiny_model if method == "SIRA-Tiny" else args.small_model
+        if actual_model != expected_model:
+            note = (
+                f"adapted experiment using {actual_model}, not the released-code checkpoint "
+                f"{expected_model}; numerical equality would not be an exact reproduction"
+            )
         if note != "same":
             note += (
                 "; paper used 500 random C4 samples, OPT-1.3B watermark generation, "
