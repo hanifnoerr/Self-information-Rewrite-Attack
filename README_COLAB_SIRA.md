@@ -17,6 +17,13 @@ In Colab, choose **Runtime > Change runtime type > L4 GPU**, add a Colab Secret
 named `HF_TOKEN`, and run the cells from top to bottom. The notebook starts with
 10 KGW samples and copies final outputs to Google Drive.
 
+If a SIRA runner fails, inspect its stage log:
+
+```text
+/content/sira_outputs/logs/sira_tiny.log
+/content/sira_outputs/logs/sira_small.log
+```
+
 ## Important Reproduction Notes
 
 - The paper uses `facebook/opt-1.3b` to generate watermarked text, 500 random C4

@@ -69,7 +69,9 @@ def main(args):
                     continue
 
                 item = json.loads(line)
-                prompt = item['prefix']
+                prompt = item.get('prefix', item.get('prompt'))
+                if prompt is None:
+                    raise KeyError("Input row must contain either 'prefix' or 'prompt'.")
                 watermarked_text = myWatermark.generate_watermarked_text(prompt)
                 unwatermarked_text = myWatermark.generate_unwatermarked_text(prompt)
 
@@ -81,7 +83,7 @@ def main(args):
                 out_f.write(json.dumps(response_item) + '\n')
 
         # Free memory
-        del myWatermark, transformers_config, lines, item, response_item
+        del myWatermark, transformers_config, lines
         gc.collect()
         torch.cuda.empty_cache()
 
