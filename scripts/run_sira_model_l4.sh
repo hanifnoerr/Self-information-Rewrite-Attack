@@ -9,6 +9,7 @@ GENERATION_MODEL="${GENERATION_MODEL:-facebook/opt-1.3b}"
 MODEL_NAME="${MODEL_NAME:?Set MODEL_NAME before running this script}"
 MODEL_LABEL="${MODEL_LABEL:?Set MODEL_LABEL before running this script}"
 LOAD_IN_4BIT="${LOAD_IN_4BIT:-false}"
+LOADER_TYPE="${LOADER_TYPE:-auto}"
 GENERATED_TOKENS="${GENERATED_TOKENS:-230}"
 
 WATERMARK_DIR="${OUTPUT_ROOT}/watermarked"
@@ -30,7 +31,7 @@ if [[ "${LOAD_IN_4BIT}" == "true" ]]; then
 fi
 
 echo "Running SIRA with ${MODEL_NAME}"
-echo "Label=${MODEL_LABEL}, algorithm=${ALGORITHM}, samples=${SAMPLES}, load_in_4bit=${LOAD_IN_4BIT}"
+echo "Label=${MODEL_LABEL}, algorithm=${ALGORITHM}, samples=${SAMPLES}, load_in_4bit=${LOAD_IN_4BIT}, loader_type=${LOADER_TYPE}"
 
 echo "=== Stage 0: Generate shared watermarked data ==="
 WATERMARK_FILE="${WATERMARK_DIR}/${ALGORITHM}_response.json"
@@ -60,6 +61,7 @@ python scripts/pre_attack.py \
   --gpu 0 \
   --algorithms "${ALGORITHM}" \
   --dtype bf16 \
+  --loader_type "${LOADER_TYPE}" \
   "${QUANTIZATION_ARGS[@]}" \
   --max_samples "${SAMPLES}" \
   --seed 42
@@ -72,6 +74,7 @@ python scripts/attack.py \
   --gpu 0 \
   --algorithms "${ALGORITHM}" \
   --dtype bf16 \
+  --loader_type "${LOADER_TYPE}" \
   "${QUANTIZATION_ARGS[@]}" \
   --max_samples "${SAMPLES}" \
   --seed 42

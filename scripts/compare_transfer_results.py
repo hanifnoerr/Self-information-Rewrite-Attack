@@ -105,18 +105,21 @@ def main():
         row for row in comparison_rows
         if row.get("method_type") == "SIRA"
         and row.get("model_family") != "Llama"
+        and row.get("attack_success_rate") is not None
         and row["transfer_threshold_pass"]
     ]
     tested_non_llama = [
         row for row in comparison_rows
-        if row.get("method_type") == "SIRA" and row.get("model_family") != "Llama"
+        if row.get("method_type") == "SIRA"
+        and row.get("model_family") != "Llama"
+        and row.get("attack_success_rate") is not None
     ]
 
     paper_style_rows = []
     for row in comparison_rows:
         paper_asr = None
         note = "Cross-model SIRA transfer test."
-        if row.get("method_type") == "SIRA" and row.get("model_family") == "Llama":
+        if row.get("label") == "llama_3_2_3b":
             paper_asr = PAPER_TINY_ASR.get(args.algorithm)
             note = "Released-code Llama reference; compare cautiously with paper SIRA-Tiny."
         elif row.get("label") == "cognitive_integrity_grid":
@@ -126,6 +129,10 @@ def main():
             )
         elif row.get("label") == "normal_rewrite_control":
             note = "Same Llama rewrite model without grid masking."
+        if row.get("run_status") in {"skipped_access", "failed"}:
+            error_lines = row.get("run_error", "").splitlines()
+            error_summary = error_lines[0] if error_lines else "No error details recorded."
+            note = f"{row.get('run_status')}: {error_summary}"
 
         reproduced_asr = row.get("attack_success_rate")
         difference = None
@@ -135,6 +142,11 @@ def main():
         paper_style_rows.append(
             {
                 "method": row.get("display_name"),
+                "model_family": row.get("model_family"),
+                "parameter_size": row.get("parameter_size"),
+                "size_tier": row.get("size_tier"),
+                "quantization": row.get("quantization"),
+                "run_status": row.get("run_status", "completed"),
                 "watermark_algorithm": args.algorithm,
                 "paper_attack_success_rate": paper_asr,
                 "reproduced_attack_success_rate": reproduced_asr,
@@ -158,9 +170,9 @@ def main():
         report.write("# SIRA Cross-Model Transfer Report\n\n")
         report.write("## Goal\n\n")
         report.write(
-            "Test whether the SIRA attack pipeline transfers from the released Llama checkpoint "
-            "to attack models from other LLM families. This experiment can provide evidence of "
-            "transferability, but testing a few models cannot prove SIRA works on any LLM.\n\n"
+            "Test whether the same SIRA attack pipeline transfers across three LLM families and "
+            "three practical size tiers per family. This experiment can provide evidence of "
+            "transferability, but it cannot prove SIRA works on every LLM.\n\n"
         )
 
         report.write("## Experiment\n\n")
@@ -168,6 +180,7 @@ def main():
         report.write(f"- Samples: {args.samples}\n")
         report.write("- Shared watermarked data: OPT-1.3B generation on the same C4 subset\n")
         report.write("- SIRA threshold: 30\n")
+        report.write("- Model matrix: Llama, Gemma 4, and Qwen; three size tiers each\n")
         report.write(
             f"- Strong-transfer criterion: ASR >= {args.asr_threshold:.2f} and "
             f"semantic similarity >= {args.similarity_threshold:.2f}\n\n"
@@ -177,14 +190,20 @@ def main():
             "In particular, a 4-bit result should not be treated as a precision-controlled "
             "comparison with a bf16 result.\n\n"
         )
+        report.write(
+            "The small, medium, and large tiers are practical L4 tiers rather than perfectly "
+            "parameter-matched controls. Llama 8B is from Llama 3, Gemma E2B/E4B report "
+            "effective parameters, and Gemma 26B A4B is a mixture-of-experts model.\n\n"
+        )
 
         report.write("## Results\n\n")
-        report.write("| method | family | size | quantization | ASR | semantic similarity | average watermark score | failures | comparison criterion |\n")
-        report.write("|---|---|---:|---|---:|---:|---:|---:|---|\n")
+        report.write("| method | family | tier | size | quantization | status | ASR | semantic similarity | average watermark score | failures | comparison criterion |\n")
+        report.write("|---|---|---|---:|---|---|---:|---:|---:|---:|---|\n")
         for row in comparison_rows:
             report.write(
-                f"| {row['display_name']} | {row['model_family']} | {row['parameter_size']} | "
-                f"{row['quantization']} | {show(row['attack_success_rate'])} | "
+                f"| {row['display_name']} | {row['model_family']} | {row.get('size_tier', 'N/A')} | "
+                f"{row['parameter_size']} | {row['quantization']} | {row.get('run_status', 'completed')} | "
+                f"{show(row['attack_success_rate'])} | "
                 f"{show(row['semantic_similarity'])} | {show(row['average_watermark_score'])} | "
                 f"{row['failed_samples']} | {'pass' if row['transfer_threshold_pass'] else 'fail'} |\n"
             )
@@ -193,7 +212,7 @@ def main():
         llama_result = next(
             (
                 row for row in sira_rows
-                if row.get("model_family") == "Llama"
+                if row.get("label") == "llama_3_2_3b"
             ),
             None,
         )

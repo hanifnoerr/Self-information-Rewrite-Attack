@@ -3,9 +3,8 @@ import json
 import torch
 import argparse
 import time
-import transformers
 from tqdm import tqdm
-from model_utils import load_model_and_tokenizer
+from model_utils import generate_chat_text, load_model_and_tokenizer
 
 
 def parse_args():
@@ -19,6 +18,7 @@ def parse_args():
     parser.add_argument('--dtype', choices=['auto', 'fp16', 'bf16'], default='auto')
     parser.add_argument('--load_in_4bit', action='store_true')
     parser.add_argument('--load_in_8bit', action='store_true')
+    parser.add_argument('--loader_type', choices=['auto', 'causal', 'processor_causal'], default='auto')
     parser.add_argument('--max_samples', type=int, default=0, help='0 means all input samples')
     parser.add_argument('--seed', type=int, default=42)
     return parser.parse_args()
@@ -53,12 +53,7 @@ def main(args):
         dtype_name=args.dtype,
         load_in_4bit=args.load_in_4bit,
         load_in_8bit=args.load_in_8bit,
-    )
-    pipeline = transformers.pipeline(
-        "text-generation",
-        model=model,
-        tokenizer=tokenizer,
-        do_sample=False
+        loader_type=args.loader_type,
     )
 
     algorithms = args.algorithms.split(",")
@@ -92,9 +87,12 @@ def main(args):
 
                 input_text = fill_attack_prompt(ref_text, blank_text)
                 messages = [{"role": "user", "content": input_text}]
-                outputs = pipeline(messages, max_new_tokens=256, do_sample=False)
-
-                output_text = outputs[0]["generated_text"][-1]["content"]
+                output_text = generate_chat_text(
+                    model,
+                    tokenizer,
+                    messages,
+                    max_new_tokens=256,
+                )
 
                 response_item = {
                     'prompt': prompt,
@@ -106,7 +104,7 @@ def main(args):
                 }
                 out_f.write(json.dumps(response_item) + '\n')
 
-    del pipeline, model, tokenizer
+    del model, tokenizer
     torch.cuda.empty_cache()
     peak_memory = torch.cuda.max_memory_allocated() / (1024 ** 3) if torch.cuda.is_available() else 0
     print(f"Attack runtime: {time.time() - start_time:.2f} seconds")

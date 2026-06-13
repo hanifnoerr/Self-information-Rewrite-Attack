@@ -5,8 +5,7 @@ import numpy as np
 import time
 from tqdm import tqdm
 import argparse
-import transformers
-from model_utils import load_model_and_tokenizer
+from model_utils import generate_chat_text, get_text_tokenizer, load_model_and_tokenizer
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Run paraphrasing + self-information blanking pipeline.")
@@ -22,6 +21,7 @@ def parse_args():
     parser.add_argument('--dtype', choices=['auto', 'fp16', 'bf16'], default='auto')
     parser.add_argument('--load_in_4bit', action='store_true')
     parser.add_argument('--load_in_8bit', action='store_true')
+    parser.add_argument('--loader_type', choices=['auto', 'causal', 'processor_causal'], default='auto')
     parser.add_argument('--max_samples', type=int, default=0, help='0 means all input samples')
     parser.add_argument('--seed', type=int, default=42)
     return parser.parse_args()
@@ -55,12 +55,7 @@ if __name__ == "__main__":
         dtype_name=args.dtype,
         load_in_4bit=args.load_in_4bit,
         load_in_8bit=args.load_in_8bit,
-    )
-    pipeline = transformers.pipeline(
-        "text-generation",
-        model=paraphrase_model,
-        tokenizer=paraphrase_tokenizer,
-        do_sample=False
+        loader_type=args.loader_type,
     )
     
     for algorithm in algorithms:
@@ -89,8 +84,12 @@ if __name__ == "__main__":
                     {"role": "system", "content": "You are a helpful rewriter."},
                     {"role": "user", "content": input_text},
                 ]
-                outputs = pipeline(messages, max_new_tokens=256, do_sample=False)
-                output_text = outputs[0]["generated_text"][-1]["content"]
+                output_text = generate_chat_text(
+                    paraphrase_model,
+                    paraphrase_tokenizer,
+                    messages,
+                    max_new_tokens=256,
+                )
 
                 response_item = {
                     'prompt': prompt,
@@ -100,7 +99,7 @@ if __name__ == "__main__":
                 }
                 out_f.write(json.dumps(response_item) + '\n')
 
-    del pipeline, paraphrase_model, paraphrase_tokenizer
+    del paraphrase_model, paraphrase_tokenizer
     torch.cuda.empty_cache()
 
     # Stage 2: Self-Information Blanking
@@ -159,8 +158,12 @@ if __name__ == "__main__":
         dtype_name=args.dtype,
         load_in_4bit=args.load_in_4bit,
         load_in_8bit=args.load_in_8bit,
+        loader_type=args.loader_type,
     )
-    calculator = SelfInformationCalculator(model=model, tokenizer=tokenizer)
+    calculator = SelfInformationCalculator(
+        model=model,
+        tokenizer=get_text_tokenizer(tokenizer),
+    )
     threshold = args.threshold
 
     for algorithm in algorithms:

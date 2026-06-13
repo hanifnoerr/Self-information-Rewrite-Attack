@@ -7,44 +7,47 @@ laptop GPU is not used.
 
 [Open the transfer-test notebook in Google Colab](https://colab.research.google.com/github/hanifnoerr/Self-information-Rewrite-Attack/blob/codex/browser-colab-l4/SIRA_COLAB_L4.ipynb)
 
-## Recommended Models
+## Three Families by Three Sizes
 
-The notebook runs the same SIRA workflow on:
+The notebook runs the same SIRA workflow on nine attack models:
 
-| Role | Model | Family | Precision |
+| Family | Small | Medium | Large |
 |---|---|---|---|
-| Released-code reference | `meta-llama/Llama-3.2-3B-Instruct` | Llama | bf16 |
-| Non-Llama transfer test | `google/gemma-2-2b-it` | Gemma | bf16 |
-| Non-Llama transfer test | `Qwen/Qwen2.5-7B-Instruct` | Qwen | 4-bit NF4 |
+| Llama | Llama 3.2 1B, bf16 | Llama 3.2 3B, bf16 | Llama 3 8B, 4-bit |
+| Gemma 4 | Gemma 4 E2B, bf16 | Gemma 4 E4B, bf16 | Gemma 4 26B A4B, 4-bit |
+| Qwen 2.5 | Qwen 2.5 0.5B, bf16 | Qwen 2.5 3B, bf16 | Qwen 2.5 7B, 4-bit |
 
-Why these models:
+The exact checkpoint names and loading settings are stored in:
 
-- Gemma tests transfer to a Google model family with a smaller text-only model
-  that fits comfortably on one L4.
-- Qwen tests a different model family and a larger attack model.
-- The Llama checkpoint is the default in the released SIRA `pre_attack.py` and
-  acts as the reference.
+```text
+config/model_matrix_l4.json
+```
 
-Testing Gemma and Qwen can provide evidence that SIRA transfers beyond Llama.
-It cannot prove SIRA works on every possible LLM.
+Gemma 4 uses `AutoProcessor` plus `AutoModelForCausalLM` for its text-only SIRA
+attack pass. The 26B A4B model is a mixture-of-experts model with about 4B active
+parameters, so its size tier is not directly comparable with dense Llama/Qwen.
+The notebook upgrades Transformers and Accelerate because Gemma 4 requires the
+latest Transformers support.
 
-Qwen is intentionally larger, but it uses 4-bit loading to fit comfortably on
-an L4. Treat its result as a practical transfer test, not a precision-controlled
-comparison with the bf16 Llama and Gemma runs.
+The size tiers are practical L4 tiers, not perfectly parameter-matched controls:
+Llama's 8B checkpoint is from Llama 3 rather than Llama 3.2, Gemma's `E` sizes
+are effective rather than total parameters, and Gemma 26B A4B is MoE.
 
 ## Hugging Face Access
 
 Add a Colab Secret named `HF_TOKEN`.
 
-The Hugging Face account behind that token must be able to download:
+Llama checkpoints may require accepting their Hugging Face terms. Gemma 4 and
+Qwen are public. A 403 no longer stops the notebook: the matrix records that
+model as `skipped_access`, continues with all accessible models, and keeps the
+skipped row in the final dataframe.
 
-```text
-meta-llama/Llama-3.2-3B-Instruct
-google/gemma-2-2b-it
-```
-
-Qwen is public. Gemma requires accepting Google's terms on Hugging Face. The
-notebook tests an actual `config.json` download for every model before starting.
+Gemma 4 model pages:
+[`E2B`](https://huggingface.co/google/gemma-4-E2B-it),
+[`E4B`](https://huggingface.co/google/gemma-4-E4B-it), and
+[`26B A4B`](https://huggingface.co/google/gemma-4-26B-A4B-it). The earlier
+`google/gemma-2-2b-it` 403 referred to the older Gemma 2 model and is no longer
+used by this matrix.
 
 ## Run the Browser Notebook
 
@@ -52,7 +55,7 @@ notebook tests an actual `config.json` download for every model before starting.
 2. Choose **Runtime > Change runtime type > L4 GPU**.
 3. Add the approved `HF_TOKEN` Colab Secret.
 4. Run all cells from top to bottom.
-5. Start with `SAMPLES = 10`.
+5. Start with `SAMPLES = 3` because this is a nine-model matrix.
 6. After the smoke test works, increase the sample count.
 7. Copy results to Drive using the final notebook cell.
 8. Use **Runtime > Disconnect and delete runtime**.
@@ -66,12 +69,12 @@ The official Colab CLI supports Linux and macOS. On Windows, run it from WSL or
 use the browser notebook above.
 
 From this repository, the non-interactive driver checks authentication, creates
-the named `sira-l4` L4 session, uploads the adaptation, runs the three models,
+the named `sira-l4` L4 session, uploads the adaptation, runs the nine-model matrix,
 downloads the results archive, and stops the session:
 
 ```bash
 colab sessions
-SAMPLES=10 ALGORITHM=KGW bash scripts/run_colab_l4_sira.sh
+SAMPLES=3 ALGORITHM=KGW bash scripts/run_colab_l4_sira.sh
 ```
 
 The script uses absolute `/content/...` paths and has an exit trap that calls:
@@ -90,11 +93,17 @@ Every model receives:
 - the same SIRA threshold of 30;
 - the same greedy rewrite workflow.
 
-Each model writes to a separate directory:
+Each model writes to `/content/sira_outputs/sira_models/<model-label>/`.
+Examples:
 
 ```text
+/content/sira_outputs/sira_models/llama_3_2_1b/
 /content/sira_outputs/sira_models/llama_3_2_3b/
-/content/sira_outputs/sira_models/gemma_2_2b/
+/content/sira_outputs/sira_models/gemma_4_e2b/
+/content/sira_outputs/sira_models/gemma_4_e4b/
+/content/sira_outputs/sira_models/gemma_4_26b_a4b/
+/content/sira_outputs/sira_models/qwen_2_5_0_5b/
+/content/sira_outputs/sira_models/qwen_2_5_3b/
 /content/sira_outputs/sira_models/qwen_2_5_7b/
 ```
 
@@ -205,8 +214,14 @@ necessary to determine whether the grid adds anything beyond ordinary rewriting.
 Per-model logs:
 
 ```text
+/content/sira_outputs/logs/sira_llama_3_2_1b.log
 /content/sira_outputs/logs/sira_llama_3_2_3b.log
-/content/sira_outputs/logs/sira_gemma_2_2b.log
+/content/sira_outputs/logs/sira_llama_3_8b.log
+/content/sira_outputs/logs/sira_gemma_4_e2b.log
+/content/sira_outputs/logs/sira_gemma_4_e4b.log
+/content/sira_outputs/logs/sira_gemma_4_26b_a4b.log
+/content/sira_outputs/logs/sira_qwen_2_5_0_5b.log
+/content/sira_outputs/logs/sira_qwen_2_5_3b.log
 /content/sira_outputs/logs/sira_qwen_2_5_7b.log
 ```
 
@@ -220,6 +235,7 @@ The released `pre_attack.py` defaults to
 `meta-llama/Llama-3.2-3B-Instruct`, which is the strongest evidence for the
 intended SIRA-Tiny checkpoint.
 
-A 10-sample L4 run is a functional reproduction attempt, not an exact paper
-reproduction. Gemma and Qwen results measure transferability and should not be
-compared as exact SIRA-Tiny or SIRA-Small reproductions.
+A small L4 matrix run is a functional transfer experiment, not an exact paper
+reproduction. Gemma 4 uses a multimodal processor, its large tier is MoE, and
+large models use 4-bit loading, so those results should not be compared as
+exact SIRA-Tiny or SIRA-Small reproductions.

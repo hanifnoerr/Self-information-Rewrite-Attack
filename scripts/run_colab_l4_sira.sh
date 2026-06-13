@@ -5,7 +5,7 @@ SESSION_NAME="sira-l4"
 LOCAL_REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCAL_OUTPUT="${LOCAL_REPO}/sira_outputs"
 LOCAL_LOG_DIR="${LOCAL_OUTPUT}/logs"
-SAMPLES="${SAMPLES:-10}"
+SAMPLES="${SAMPLES:-3}"
 ALGORITHM="${ALGORITHM:-KGW}"
 
 mkdir -p "${LOCAL_LOG_DIR}"
@@ -38,17 +38,20 @@ if [ ! -d /content/Self-information-Rewrite-Attack/.git ]; then
 fi
 cd /content/Self-information-Rewrite-Attack
 pip install -r requirements.txt
+pip install --upgrade transformers accelerate
 pip install bitsandbytes tqdm"
 
 FILES_TO_UPLOAD=(
   "README_COLAB_SIRA.md"
   "requirements.txt"
+  "config/model_matrix_l4.json"
   "scripts/model_utils.py"
   "scripts/generate_watermark.py"
   "scripts/pre_attack.py"
   "scripts/attack.py"
   "scripts/prepare_colab_huggingface.py"
   "scripts/run_sira_model_l4.sh"
+  "scripts/run_model_matrix_l4.py"
   "scripts/cognitive_integrity.py"
   "scripts/run_cognitive_integrity_baseline.py"
   "scripts/evaluate_sira_transfer.py"
@@ -68,9 +71,12 @@ colab exec -s "${SESSION_NAME}" -f "${LOCAL_REPO}/scripts/prepare_colab_huggingf
 run_remote "set -euo pipefail
 cd /content/Self-information-Rewrite-Attack
 export PYTHONPATH=/content/Self-information-Rewrite-Attack
-MODEL_NAME=meta-llama/Llama-3.2-3B-Instruct MODEL_LABEL=llama_3_2_3b LOAD_IN_4BIT=false ALGORITHM='${ALGORITHM}' SAMPLES='${SAMPLES}' bash scripts/run_sira_model_l4.sh
-MODEL_NAME=google/gemma-2-2b-it MODEL_LABEL=gemma_2_2b LOAD_IN_4BIT=false ALGORITHM='${ALGORITHM}' SAMPLES='${SAMPLES}' bash scripts/run_sira_model_l4.sh
-MODEL_NAME=Qwen/Qwen2.5-7B-Instruct MODEL_LABEL=qwen_2_5_7b LOAD_IN_4BIT=true ALGORITHM='${ALGORITHM}' SAMPLES='${SAMPLES}' bash scripts/run_sira_model_l4.sh
+python scripts/run_model_matrix_l4.py \
+  --config_path /content/Self-information-Rewrite-Attack/config/model_matrix_l4.json \
+  --repo_dir /content/Self-information-Rewrite-Attack \
+  --output_root /content/sira_outputs \
+  --algorithm '${ALGORITHM}' \
+  --samples '${SAMPLES}'
 
 python scripts/run_cognitive_integrity_baseline.py \
   --input_path '/content/sira_outputs/watermarked/${ALGORITHM}_response.json' \
@@ -78,39 +84,7 @@ python scripts/run_cognitive_integrity_baseline.py \
   --model_name meta-llama/Llama-3.2-3B-Instruct \
   --grid_size 2 \
   --dtype bf16 \
-  --max_samples '${SAMPLES}'
-
-cat > /content/sira_outputs/model_runs.json <<'JSON'
-[
-  {
-    \"label\": \"llama_3_2_3b\",
-    \"display_name\": \"Llama 3.2 3B Instruct\",
-    \"model_family\": \"Llama\",
-    \"model_name\": \"meta-llama/Llama-3.2-3B-Instruct\",
-    \"parameter_size\": \"3B\",
-    \"quantization\": \"bf16\",
-    \"attack_path\": \"/content/sira_outputs/sira_models/llama_3_2_3b/final/${ALGORITHM}_attack.json\"
-  },
-  {
-    \"label\": \"gemma_2_2b\",
-    \"display_name\": \"Gemma 2 2B IT\",
-    \"model_family\": \"Gemma\",
-    \"model_name\": \"google/gemma-2-2b-it\",
-    \"parameter_size\": \"2B\",
-    \"quantization\": \"bf16\",
-    \"attack_path\": \"/content/sira_outputs/sira_models/gemma_2_2b/final/${ALGORITHM}_attack.json\"
-  },
-  {
-    \"label\": \"qwen_2_5_7b\",
-    \"display_name\": \"Qwen 2.5 7B Instruct\",
-    \"model_family\": \"Qwen\",
-    \"model_name\": \"Qwen/Qwen2.5-7B-Instruct\",
-    \"parameter_size\": \"7B\",
-    \"quantization\": \"4-bit NF4 with bf16 compute\",
-    \"attack_path\": \"/content/sira_outputs/sira_models/qwen_2_5_7b/final/${ALGORITHM}_attack.json\"
-  }
-]
-JSON
+  --max_samples '${SAMPLES}' || true
 
 python scripts/write_environment.py \
   --output_path /content/sira_outputs/environment.json \

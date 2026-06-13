@@ -200,9 +200,24 @@ def main():
     )
 
     for model_run in model_runs:
-        attack_items = read_jsonl(model_run["attack_path"], args.max_samples)
+        attack_items = []
+        if model_run.get("run_status") in {None, "completed"}:
+            attack_items = read_jsonl(model_run["attack_path"], args.max_samples)
         if not attack_items:
-            print(f"Skipping missing output: {model_run['attack_path']}")
+            print(f"Recording missing output: {model_run['attack_path']}")
+            results.append(
+                {
+                    "method_type": "SIRA",
+                    **model_run,
+                    "attack_success_rate": None,
+                    "average_watermark_score": None,
+                    "semantic_similarity": None,
+                    "number_of_samples": 0,
+                    "evaluated_samples": 0,
+                    "failed_samples": args.max_samples if args.max_samples > 0 else 0,
+                    "runtime_seconds": 0,
+                }
+            )
             continue
 
         print(f"Evaluating {model_run['display_name']}: {len(attack_items)} samples")
