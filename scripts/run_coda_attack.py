@@ -7,7 +7,13 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
-from model_utils import generate_chat_text, get_text_tokenizer, load_model_and_tokenizer
+from model_utils import (
+    calculate_self_information_batch,
+    generate_chat_texts,
+    get_text_tokenizer,
+    load_model_and_tokenizer,
+    make_batches,
+)
 
 
 ANCHOR_MARKER = "[ANCHOR]"
@@ -23,32 +29,6 @@ def build_coda_prompt(marked_text):
         "Output only the completed paragraph.\n\n"
         f"Paragraph:\n{marked_text}"
     )
-
-
-def calculate_self_information(model, tokenizer, text):
-    with torch.no_grad():
-        encoding = tokenizer(
-            text,
-            add_special_tokens=False,
-            return_tensors="pt",
-        ).to(model.device)
-        outputs = model(**encoding)
-        probabilities = torch.softmax(outputs.logits, dim=-1)
-        self_information = -torch.log(probabilities)
-
-    input_ids = encoding["input_ids"][0]
-    if len(input_ids) < 2:
-        return input_ids.tolist(), []
-
-    next_token_ids = input_ids[1:].unsqueeze(-1)
-    values = self_information[:, :-1].gather(
-        -1,
-        next_token_ids.unsqueeze(0),
-    ).squeeze().tolist()
-
-    if isinstance(values, float):
-        values = [values]
-    return input_ids.tolist(), values
 
 
 def select_anchor_indexes(token_ids, self_information_values, threshold):
@@ -125,6 +105,7 @@ def main():
     )
     parser.add_argument("--max_samples", type=int, default=500)
     parser.add_argument("--max_new_tokens", type=int, default=256)
+    parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
@@ -156,58 +137,64 @@ def main():
 
     with open(args.output_path, "a", encoding="utf-8") as output_file:
         remaining_lines = lines[completed_samples:]
-        for item_id, line in enumerate(
-            tqdm(remaining_lines, desc="CoDA", unit="sample"),
-            start=completed_samples,
-        ):
-            item = json.loads(line)
-            watermarked_text = item["watermarked_text"]
-
-            token_ids, self_information_values = calculate_self_information(
+        progress = tqdm(total=len(remaining_lines), desc="CoDA", unit="sample")
+        for line_batch in make_batches(remaining_lines, args.batch_size):
+            items = [json.loads(line) for line in line_batch]
+            information_results = calculate_self_information_batch(
                 model,
                 tokenizer,
-                watermarked_text,
+                [item["watermarked_text"] for item in items],
             )
-            suspicious_indexes, anchor_indexes = select_anchor_indexes(
-                token_ids,
-                self_information_values,
-                args.threshold,
-            )
-            marked_text = build_marked_text(token_ids, anchor_indexes, tokenizer)
-            suspicious_tokens = [
-                tokenizer.decode([token_ids[index]], skip_special_tokens=True)
-                for index in suspicious_indexes
-            ]
-            anchor_tokens = [
-                tokenizer.decode([token_ids[index]], skip_special_tokens=True)
-                for index in anchor_indexes
-            ]
+            artifacts = []
+            message_batches = []
+            for token_ids, self_information_values in information_results:
+                suspicious_indexes, anchor_indexes = select_anchor_indexes(
+                    token_ids,
+                    self_information_values,
+                    args.threshold,
+                )
+                marked_text = build_marked_text(token_ids, anchor_indexes, tokenizer)
+                artifacts.append((token_ids, suspicious_indexes, anchor_indexes, marked_text))
+                message_batches.append(
+                    [{"role": "user", "content": build_coda_prompt(marked_text)}]
+                )
 
-            messages = [{"role": "user", "content": build_coda_prompt(marked_text)}]
-            generated_text = generate_chat_text(
+            generated_texts = generate_chat_texts(
                 model,
                 tokenizer_or_processor,
-                messages,
+                message_batches,
                 max_new_tokens=args.max_new_tokens,
             )
 
-            result = {
-                "id": item_id,
-                "prompt": item.get("prompt", ""),
-                "watermarked_text": watermarked_text,
-                "unwatermarked_text": item.get("unwatermarked_text", ""),
-                "marked_text": marked_text,
-                "attack_text": generated_text,
-                "suspicious_token_indexes": suspicious_indexes,
-                "suspicious_tokens": suspicious_tokens,
-                "anchor_token_indexes": anchor_indexes,
-                "anchor_tokens": anchor_tokens,
-                "suspicious_token_count": len(suspicious_indexes),
-                "anchor_count": len(anchor_indexes),
-                "anchor_rate": len(anchor_indexes) / len(token_ids) if token_ids else 0.0,
-            }
-            output_file.write(json.dumps(result, ensure_ascii=False) + "\n")
+            for batch_index, (item, artifact, generated_text) in enumerate(
+                zip(items, artifacts, generated_texts)
+            ):
+                token_ids, suspicious_indexes, anchor_indexes, marked_text = artifact
+                result = {
+                    "id": completed_samples + progress.n + batch_index,
+                    "prompt": item.get("prompt", ""),
+                    "watermarked_text": item["watermarked_text"],
+                    "unwatermarked_text": item.get("unwatermarked_text", ""),
+                    "marked_text": marked_text,
+                    "attack_text": generated_text,
+                    "suspicious_token_indexes": suspicious_indexes,
+                    "suspicious_tokens": [
+                        tokenizer.decode([token_ids[index]], skip_special_tokens=True)
+                        for index in suspicious_indexes
+                    ],
+                    "anchor_token_indexes": anchor_indexes,
+                    "anchor_tokens": [
+                        tokenizer.decode([token_ids[index]], skip_special_tokens=True)
+                        for index in anchor_indexes
+                    ],
+                    "suspicious_token_count": len(suspicious_indexes),
+                    "anchor_count": len(anchor_indexes),
+                    "anchor_rate": len(anchor_indexes) / len(token_ids) if token_ids else 0.0,
+                }
+                output_file.write(json.dumps(result, ensure_ascii=False) + "\n")
             output_file.flush()
+            progress.update(len(items))
+        progress.close()
 
     peak_memory = torch.cuda.max_memory_allocated() / (1024 ** 3) if torch.cuda.is_available() else 0
     print(f"CoDA output: {args.output_path}")

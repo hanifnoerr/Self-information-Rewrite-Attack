@@ -186,6 +186,7 @@ def main():
                 "parameter_size": row.get("parameter_size"),
                 "size_tier": row.get("size_tier"),
                 "quantization": row.get("quantization"),
+                "batch_size": row.get("batch_size"),
                 "run_status": row.get("run_status", "completed"),
                 "watermark_algorithm": args.algorithm,
                 "paper_attack_success_rate": paper_asr,
@@ -253,17 +254,18 @@ def main():
             )
         else:
             report.write(
-                "The configured tiers are practical L4 tiers rather than perfectly "
+                "The configured tiers are practical single-GPU tiers rather than perfectly "
                 "parameter-matched controls.\n\n"
             )
 
         report.write("## Results\n\n")
-        report.write("| attack method | configuration | family | tier | size | quantization | status | ASR | semantic similarity | average watermark score | failures | comparison criterion |\n")
-        report.write("|---|---|---|---|---:|---|---|---:|---:|---:|---:|---|\n")
+        report.write("| attack method | configuration | family | tier | size | quantization | batch | status | ASR | semantic similarity | average watermark score | failures | comparison criterion |\n")
+        report.write("|---|---|---|---|---:|---|---:|---|---:|---:|---:|---:|---|\n")
         for row in comparison_rows:
             report.write(
                 f"| {row.get('method_type', 'N/A')} | {row['display_name']} | {row['model_family']} | "
                 f"{row.get('size_tier', 'N/A')} | {row['parameter_size']} | {row['quantization']} | "
+                f"{row.get('batch_size', 'N/A')} | "
                 f"{row.get('run_status', 'completed')} | "
                 f"{show(row['attack_success_rate'])} | "
                 f"{show(row['semantic_similarity'])} | {show(row['average_watermark_score'])} | "

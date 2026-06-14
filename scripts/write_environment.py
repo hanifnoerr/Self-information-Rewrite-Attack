@@ -25,6 +25,7 @@ def main():
     parser.add_argument("--tiny_quantization", default="bf16")
     parser.add_argument("--small_quantization", default="bf16")
     parser.add_argument("--coda_quantization", default="bf16")
+    parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--models_config", default="")
     parser.add_argument("--coda_models_config", default="")
     args = parser.parse_args()
@@ -63,6 +64,7 @@ def main():
         },
         "attack_models": attack_models,
         "coda_models": coda_models,
+        "batch_size": args.batch_size,
     }
 
     os.makedirs(os.path.dirname(args.output_path), exist_ok=True)

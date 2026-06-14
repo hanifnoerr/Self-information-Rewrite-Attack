@@ -8,6 +8,7 @@ SAMPLES="${SAMPLES:-500}"
 GENERATION_MODEL="${GENERATION_MODEL:-facebook/opt-1.3b}"
 ATTACK_MODEL="${TINY_MODEL:-meta-llama/Llama-3.2-3B-Instruct}"
 GENERATED_TOKENS="${GENERATED_TOKENS:-230}"
+BATCH_SIZE="${BATCH_SIZE:-4}"
 
 WATERMARK_DIR="${OUTPUT_ROOT}/watermarked"
 TINY_DIR="${OUTPUT_ROOT}/sira_tiny"
@@ -48,6 +49,7 @@ python scripts/pre_attack.py \
   --gpu 0 \
   --algorithms "${ALGORITHM}" \
   --dtype bf16 \
+  --batch_size "${BATCH_SIZE}" \
   --max_samples "${SAMPLES}" \
   --seed 42
 
@@ -59,6 +61,7 @@ python scripts/attack.py \
   --gpu 0 \
   --algorithms "${ALGORITHM}" \
   --dtype bf16 \
+  --batch_size "${BATCH_SIZE}" \
   --max_samples "${SAMPLES}" \
   --seed 42
 

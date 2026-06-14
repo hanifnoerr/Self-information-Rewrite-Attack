@@ -4,7 +4,7 @@ import torch
 import argparse
 import time
 from tqdm import tqdm
-from model_utils import generate_chat_text, load_model_and_tokenizer
+from model_utils import generate_chat_texts, load_model_and_tokenizer, make_batches
 
 
 def parse_args():
@@ -19,6 +19,7 @@ def parse_args():
     parser.add_argument('--load_in_4bit', action='store_true')
     parser.add_argument('--load_in_8bit', action='store_true')
     parser.add_argument('--loader_type', choices=['auto', 'causal', 'multimodal', 'processor_causal'], default='auto')
+    parser.add_argument('--batch_size', type=int, default=1)
     parser.add_argument('--max_samples', type=int, default=0, help='0 means all input samples')
     parser.add_argument('--seed', type=int, default=42)
     return parser.parse_args()
@@ -76,33 +77,34 @@ def main(args):
             with open(output_file, 'r') as f:
                 last_line = sum(1 for _ in f)
 
+        remaining_lines = lines[last_line:]
         with open(output_file, 'a') as out_f:
-            for line in tqdm(lines[last_line:], desc=f"Processing {algorithm}", unit="line"):
-                item = json.loads(line)
-                prompt = item['prompt']
-                watermarked_text = item['watermarked_text']
-                unwatermarked_text = item['unwatermarked_text']
-                blank_text = item['blank_text']
-                ref_text = item['ref_text']
-
-                input_text = fill_attack_prompt(ref_text, blank_text)
-                messages = [{"role": "user", "content": input_text}]
-                output_text = generate_chat_text(
+            progress = tqdm(total=len(remaining_lines), desc=f"Processing {algorithm}", unit="line")
+            for line_batch in make_batches(remaining_lines, args.batch_size):
+                items = [json.loads(line) for line in line_batch]
+                message_batches = [
+                    [{"role": "user", "content": fill_attack_prompt(item['ref_text'], item['blank_text'])}]
+                    for item in items
+                ]
+                output_texts = generate_chat_texts(
                     model,
                     tokenizer,
-                    messages,
+                    message_batches,
                     max_new_tokens=256,
                 )
-
-                response_item = {
-                    'prompt': prompt,
-                    'watermarked_text': watermarked_text,
-                    'unwatermarked_text': unwatermarked_text,
-                    'blank_text': blank_text,
-                    'ref_text': ref_text,
-                    'attack_text': output_text,
-                }
-                out_f.write(json.dumps(response_item) + '\n')
+                for item, output_text in zip(items, output_texts):
+                    response_item = {
+                        'prompt': item['prompt'],
+                        'watermarked_text': item['watermarked_text'],
+                        'unwatermarked_text': item['unwatermarked_text'],
+                        'blank_text': item['blank_text'],
+                        'ref_text': item['ref_text'],
+                        'attack_text': output_text,
+                    }
+                    out_f.write(json.dumps(response_item) + '\n')
+                out_f.flush()
+                progress.update(len(items))
+            progress.close()
 
     del model, tokenizer
     torch.cuda.empty_cache()

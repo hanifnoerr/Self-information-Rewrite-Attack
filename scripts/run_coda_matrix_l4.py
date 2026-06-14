@@ -27,6 +27,7 @@ def main():
     parser.add_argument("--output_root", default="/content/sira_outputs")
     parser.add_argument("--samples", type=int, default=500)
     parser.add_argument("--threshold", type=int, default=30)
+    parser.add_argument("--batch_size", type=int, default=4)
     args = parser.parse_args()
 
     with open(args.config_path, "r", encoding="utf-8") as input_file:
@@ -42,6 +43,8 @@ def main():
         )
         model_run["run_status"] = "checking_access"
         model_run["run_error"] = ""
+        model_run["batch_size"] = args.batch_size
+        model_run["batch_size_note"] = "Requested batch size; resumed lines may use an earlier setting."
     save_json(status_path, model_runs)
 
     for model_run in model_runs:
@@ -86,6 +89,8 @@ def main():
             model_run["loader_type"],
             "--max_samples",
             str(args.samples),
+            "--batch_size",
+            str(args.batch_size),
         ]
         if model_run["load_in_4bit"]:
             command.append("--load_in_4bit")

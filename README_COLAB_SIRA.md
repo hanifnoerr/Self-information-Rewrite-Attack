@@ -1,7 +1,7 @@
-# SIRA and CoDA on Google Colab L4
+# SIRA and CoDA on Google Colab A100 or L4
 
 This workflow compares SIRA and CoDA on 500 shared KGW-watermarked C4
-responses using a Google Colab L4 GPU.
+responses using a Google Colab GPU. An A100 is recommended for the full run.
 
 [Open the 500-sample notebook in Google Colab](https://colab.research.google.com/github/hanifnoerr/Self-information-Rewrite-Attack/blob/codex/browser-colab-l4/SIRA_COLAB_L4.ipynb)
 
@@ -29,7 +29,8 @@ comparison controlled.
 ## Run The Notebook
 
 1. Open the notebook using the link above.
-2. Choose **Runtime > Change runtime type > L4 GPU**.
+2. Choose **Runtime > Change runtime type > A100 GPU**. Use L4 only when A100
+   is unavailable.
 3. Add a Colab Secret named `HF_TOKEN`.
 4. Accept access for any gated Llama or Gemma checkpoints.
 5. Run all cells from top to bottom.
@@ -39,6 +40,7 @@ The notebook uses:
 
 ```python
 SAMPLES = 500
+BATCH_SIZE = 4
 RESET_OUTPUTS = False
 OUTPUT_ROOT = "/content/drive/MyDrive/sira_500_outputs"
 ```
@@ -50,9 +52,32 @@ re-run the notebook with `RESET_OUTPUTS = False`.
 Set `RESET_OUTPUTS = True` only when intentionally starting a completely fresh
 experiment. This deletes the existing Drive output directory.
 
+## Batch Size
+
+The original pipeline processed one response at a time. This adaptation batches
+SIRA paraphrasing, SIRA rewriting, CoDA self-information scoring, and CoDA
+rewriting. Shared watermark generation still uses the official one-prompt-at-a-time
+API, but it runs only once and is reused by every attack model.
+
+Start an A100 40GB run with:
+
+```python
+BATCH_SIZE = 4
+```
+
+After one model begins, inspect peak GPU memory in its log. If it stays below
+approximately 28GB, try `BATCH_SIZE = 8`. If CUDA reports out-of-memory, lower
+the value to `2` or `1` and re-run. Partial outputs resume automatically.
+Choose the batch size that gives the best samples-per-second rate; completely
+filling VRAM is not itself the goal.
+
+Changing batch size while resuming is practical, but a strict reproducibility
+run should use one batch size from start to finish because floating-point
+generation can occasionally vary with batching.
+
 ## Runtime Warning
 
-This is a large L4 experiment. It runs 12 model-method combinations over 500
+This is a large experiment. It runs 12 model-method combinations over 500
 responses, plus SIRA's intermediate generation and self-information stages.
 It may require multiple Colab runtimes. The resume behavior is intentional.
 
@@ -63,14 +88,15 @@ browser notebook.
 
 ```bash
 colab sessions
-SAMPLES=500 ALGORITHM=KGW bash scripts/run_colab_l4_sira.sh
+GPU_TYPE=A100 SESSION_NAME=sira-a100 SAMPLES=500 BATCH_SIZE=4 ALGORITHM=KGW \
+  bash scripts/run_colab_l4_sira.sh
 ```
 
-The CLI driver creates the named `sira-l4` L4 session, downloads the results,
-and stops the session with:
+The CLI driver creates the named `sira-a100` A100 session, downloads the
+results, and stops the session with:
 
 ```bash
-colab stop -s sira-l4
+colab stop -s sira-a100
 ```
 
 ## Fair Comparison
@@ -116,6 +142,7 @@ python scripts/run_coda_attack.py \
   --model_name meta-llama/Llama-3.2-3B-Instruct \
   --threshold 30 \
   --dtype bf16 \
+  --batch_size 4 \
   --max_samples 500
 ```
 
@@ -127,6 +154,7 @@ python scripts/run_coda_matrix_l4.py \
   --repo_dir /content/Self-information-Rewrite-Attack \
   --input_path /content/drive/MyDrive/sira_500_outputs/watermarked/KGW_response.json \
   --output_root /content/drive/MyDrive/sira_500_outputs \
+  --batch_size 4 \
   --samples 500
 ```
 
@@ -153,5 +181,6 @@ Qwen, and CoDA were not reported by the paper, so their
 `paper_attack_success_rate` values remain blank.
 
 Using 500 samples matches the paper's sample count. The run is still not an
-exact reproduction because it uses an L4 instead of A100 GPUs, and the Llama 8B
-and Qwen 7B attack models use 4-bit quantization.
+exact reproduction when hardware, package versions, quantization, or batch size
+differs from the paper. The Llama 8B and Qwen 7B attack models currently use
+4-bit quantization.

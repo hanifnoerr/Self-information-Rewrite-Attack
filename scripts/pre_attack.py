@@ -5,7 +5,13 @@ import numpy as np
 import time
 from tqdm import tqdm
 import argparse
-from model_utils import generate_chat_text, get_text_tokenizer, load_model_and_tokenizer
+from model_utils import (
+    calculate_self_information_batch,
+    generate_chat_texts,
+    get_text_tokenizer,
+    load_model_and_tokenizer,
+    make_batches,
+)
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Run paraphrasing + self-information blanking pipeline.")
@@ -22,6 +28,7 @@ def parse_args():
     parser.add_argument('--load_in_4bit', action='store_true')
     parser.add_argument('--load_in_8bit', action='store_true')
     parser.add_argument('--loader_type', choices=['auto', 'causal', 'multimodal', 'processor_causal'], default='auto')
+    parser.add_argument('--batch_size', type=int, default=1)
     parser.add_argument('--max_samples', type=int, default=0, help='0 means all input samples')
     parser.add_argument('--seed', type=int, default=42)
     return parser.parse_args()
@@ -72,32 +79,35 @@ if __name__ == "__main__":
             with open(ref_output_file, 'r') as f:
                 last_line = sum(1 for _ in f)
 
+        remaining_lines = lines[last_line:]
         with open(ref_output_file, 'a') as out_f:
-            for i, line in enumerate(tqdm(lines[last_line:], desc=f"Stage 1: {algorithm}", unit="line")):
-                item = json.loads(line)
-                prompt = item['prompt']
-                watermarked_text = item['watermarked_text']
-                unwatermarked_text = item['unwatermarked_text']
-
-                input_text = fill_parapharseprompt(watermarked_text)
-                messages = [
-                    {"role": "system", "content": "You are a helpful rewriter."},
-                    {"role": "user", "content": input_text},
+            progress = tqdm(total=len(remaining_lines), desc=f"Stage 1: {algorithm}", unit="line")
+            for line_batch in make_batches(remaining_lines, args.batch_size):
+                items = [json.loads(line) for line in line_batch]
+                message_batches = [
+                    [
+                        {"role": "system", "content": "You are a helpful rewriter."},
+                        {"role": "user", "content": fill_parapharseprompt(item['watermarked_text'])},
+                    ]
+                    for item in items
                 ]
-                output_text = generate_chat_text(
+                output_texts = generate_chat_texts(
                     paraphrase_model,
                     paraphrase_tokenizer,
-                    messages,
+                    message_batches,
                     max_new_tokens=256,
                 )
-
-                response_item = {
-                    'prompt': prompt,
-                    'watermarked_text': watermarked_text,
-                    'unwatermarked_text': unwatermarked_text,
-                    'ref_text': output_text,
-                }
-                out_f.write(json.dumps(response_item) + '\n')
+                for item, output_text in zip(items, output_texts):
+                    response_item = {
+                        'prompt': item['prompt'],
+                        'watermarked_text': item['watermarked_text'],
+                        'unwatermarked_text': item['unwatermarked_text'],
+                        'ref_text': output_text,
+                    }
+                    out_f.write(json.dumps(response_item) + '\n')
+                out_f.flush()
+                progress.update(len(items))
+            progress.close()
 
     del paraphrase_model, paraphrase_tokenizer
     torch.cuda.empty_cache()
@@ -114,22 +124,6 @@ if __name__ == "__main__":
         def _prepare_model(self):
             self.model.eval()
             print('Model and tokenizer loaded successfully.')
-
-        def calculate_self_information(self, text: str):
-            with torch.no_grad():
-                encoding = self.tokenizer(text, add_special_tokens=False, return_tensors='pt').to(self.model.device)
-                outputs = self.model(**encoding)
-                logits = outputs.logits
-                probs = torch.softmax(logits, dim=-1)
-                self_info = -torch.log(probs)
-
-            input_ids = encoding['input_ids']
-            input_ids_expaned = input_ids[:, 1:].unsqueeze(-1)
-
-            tokens = [self.tokenizer.decode(token_) for token_ in input_ids.squeeze().tolist()[1:]]
-            self_info_values = self_info[:, :-1].gather(-1, input_ids_expaned).squeeze(-1).squeeze(0).tolist()
-
-            return tokens, self_info_values
 
         def transform_tokens(self, tokens, self_info_values, threshold_low):
             percentile = np.percentile(self_info_values, threshold_low)
@@ -181,26 +175,37 @@ if __name__ == "__main__":
         if args.max_samples > 0:
             lines = lines[:args.max_samples]
 
+        remaining_lines = lines[processed_lines:]
         with open(blank_output_file, 'a') as out_f:
-            for line in tqdm(lines[processed_lines:], desc=f"Stage 2: {algorithm}", unit="line"):
-                item = json.loads(line)
-                prompt = item['prompt']
-                watermarked_text = item['watermarked_text']
-                unwatermarked_text = item['unwatermarked_text']
-                ref_text = item['ref_text']
-
-                tokens, self_info_values = calculator.calculate_self_information(watermarked_text)
-                transformed_tokens = calculator.transform_tokens(tokens, self_info_values, threshold)
-                blank_text = "".join(transformed_tokens)
-
-                response_item = {
-                    'prompt': prompt,
-                    'watermarked_text': watermarked_text,
-                    'unwatermarked_text': unwatermarked_text,
-                    'ref_text': ref_text,
-                    'blank_text': blank_text
-                }
-                out_f.write(json.dumps(response_item) + '\n')
+            progress = tqdm(total=len(remaining_lines), desc=f"Stage 2: {algorithm}", unit="line")
+            for line_batch in make_batches(remaining_lines, args.batch_size):
+                items = [json.loads(line) for line in line_batch]
+                text_results = calculate_self_information_batch(
+                    model,
+                    calculator.tokenizer,
+                    [item['watermarked_text'] for item in items],
+                )
+                for item, (token_ids, self_info_values) in zip(items, text_results):
+                    tokens = [
+                        calculator.tokenizer.decode(token_id)
+                        for token_id in token_ids[1:]
+                    ]
+                    transformed_tokens = calculator.transform_tokens(
+                        tokens,
+                        self_info_values,
+                        threshold,
+                    )
+                    response_item = {
+                        'prompt': item['prompt'],
+                        'watermarked_text': item['watermarked_text'],
+                        'unwatermarked_text': item['unwatermarked_text'],
+                        'ref_text': item['ref_text'],
+                        'blank_text': "".join(transformed_tokens),
+                    }
+                    out_f.write(json.dumps(response_item) + '\n')
+                out_f.flush()
+                progress.update(len(items))
+            progress.close()
 
     del model, tokenizer, calculator
     torch.cuda.empty_cache()

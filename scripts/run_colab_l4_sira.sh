@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SESSION_NAME="sira-l4"
+SESSION_NAME="${SESSION_NAME:-sira-a100}"
+GPU_TYPE="${GPU_TYPE:-A100}"
 LOCAL_REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCAL_OUTPUT="${LOCAL_REPO}/sira_outputs"
 LOCAL_LOG_DIR="${LOCAL_OUTPUT}/logs"
 SAMPLES="${SAMPLES:-500}"
+BATCH_SIZE="${BATCH_SIZE:-4}"
 ALGORITHM="${ALGORITHM:-KGW}"
 
 mkdir -p "${LOCAL_LOG_DIR}"
@@ -27,8 +29,8 @@ echo "Checking Colab authentication and sessions" | tee "${RUN_LOG}"
 colab sessions 2>&1 | tee -a "${RUN_LOG}"
 colab whoami 2>&1 | tee -a "${RUN_LOG}"
 
-echo "Creating named L4 session: ${SESSION_NAME}" | tee -a "${RUN_LOG}"
-colab new -s "${SESSION_NAME}" --gpu L4 2>&1 | tee -a "${RUN_LOG}"
+echo "Creating named ${GPU_TYPE} session: ${SESSION_NAME}" | tee -a "${RUN_LOG}"
+colab new -s "${SESSION_NAME}" --gpu "${GPU_TYPE}" 2>&1 | tee -a "${RUN_LOG}"
 colab status -s "${SESSION_NAME}" 2>&1 | tee -a "${RUN_LOG}"
 
 run_remote "set -euo pipefail
@@ -76,7 +78,8 @@ python scripts/run_model_matrix_l4.py \
   --repo_dir /content/Self-information-Rewrite-Attack \
   --output_root /content/sira_outputs \
   --algorithm '${ALGORITHM}' \
-  --samples '${SAMPLES}'
+  --samples '${SAMPLES}' \
+  --batch_size '${BATCH_SIZE}'
 
 python scripts/run_coda_matrix_l4.py \
   --config_path /content/Self-information-Rewrite-Attack/config/model_matrix_l4.json \
@@ -84,12 +87,14 @@ python scripts/run_coda_matrix_l4.py \
   --input_path '/content/sira_outputs/watermarked/${ALGORITHM}_response.json' \
   --output_root /content/sira_outputs \
   --threshold 30 \
-  --samples '${SAMPLES}'
+  --samples '${SAMPLES}' \
+  --batch_size '${BATCH_SIZE}'
 
 python scripts/write_environment.py \
   --output_path /content/sira_outputs/environment.json \
   --models_config /content/sira_outputs/model_runs.json \
-  --coda_models_config /content/sira_outputs/coda_model_runs.json
+  --coda_models_config /content/sira_outputs/coda_model_runs.json \
+  --batch_size '${BATCH_SIZE}'
 
 python scripts/evaluate_sira_transfer.py \
   --generation_model facebook/opt-1.3b \

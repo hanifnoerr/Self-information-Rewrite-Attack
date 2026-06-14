@@ -26,6 +26,7 @@ def main():
     parser.add_argument("--output_root", default="/content/sira_outputs")
     parser.add_argument("--algorithm", default="KGW")
     parser.add_argument("--samples", type=int, default=500)
+    parser.add_argument("--batch_size", type=int, default=4)
     args = parser.parse_args()
 
     with open(args.config_path, "r", encoding="utf-8") as input_file:
@@ -42,6 +43,8 @@ def main():
         )
         model_run["run_status"] = "checking_access"
         model_run["run_error"] = ""
+        model_run["batch_size"] = args.batch_size
+        model_run["batch_size_note"] = "Requested batch size; resumed lines may use an earlier setting."
     save_json(models_config_path, model_runs)
 
     for model_run in model_runs:
@@ -77,6 +80,7 @@ def main():
         environment["LOADER_TYPE"] = model_run["loader_type"]
         environment["ALGORITHM"] = args.algorithm
         environment["SAMPLES"] = str(args.samples)
+        environment["BATCH_SIZE"] = str(args.batch_size)
         environment["OUTPUT_ROOT"] = args.output_root
 
         model_run["run_status"] = "running"

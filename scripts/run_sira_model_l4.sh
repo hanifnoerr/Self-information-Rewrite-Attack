@@ -11,6 +11,7 @@ MODEL_LABEL="${MODEL_LABEL:?Set MODEL_LABEL before running this script}"
 LOAD_IN_4BIT="${LOAD_IN_4BIT:-false}"
 LOADER_TYPE="${LOADER_TYPE:-auto}"
 GENERATED_TOKENS="${GENERATED_TOKENS:-230}"
+BATCH_SIZE="${BATCH_SIZE:-4}"
 
 WATERMARK_DIR="${OUTPUT_ROOT}/watermarked"
 MODEL_DIR="${OUTPUT_ROOT}/sira_models/${MODEL_LABEL}"
@@ -31,7 +32,7 @@ if [[ "${LOAD_IN_4BIT}" == "true" ]]; then
 fi
 
 echo "Running SIRA with ${MODEL_NAME}"
-echo "Label=${MODEL_LABEL}, algorithm=${ALGORITHM}, samples=${SAMPLES}, load_in_4bit=${LOAD_IN_4BIT}, loader_type=${LOADER_TYPE}"
+echo "Label=${MODEL_LABEL}, algorithm=${ALGORITHM}, samples=${SAMPLES}, batch_size=${BATCH_SIZE}, load_in_4bit=${LOAD_IN_4BIT}, loader_type=${LOADER_TYPE}"
 
 echo "=== Stage 0: Generate shared watermarked data ==="
 WATERMARK_FILE="${WATERMARK_DIR}/${ALGORITHM}_response.json"
@@ -68,6 +69,7 @@ python scripts/pre_attack.py \
   --algorithms "${ALGORITHM}" \
   --dtype bf16 \
   --loader_type "${LOADER_TYPE}" \
+  --batch_size "${BATCH_SIZE}" \
   "${QUANTIZATION_ARGS[@]}" \
   --max_samples "${SAMPLES}" \
   --seed 42
@@ -81,6 +83,7 @@ python scripts/attack.py \
   --algorithms "${ALGORITHM}" \
   --dtype bf16 \
   --loader_type "${LOADER_TYPE}" \
+  --batch_size "${BATCH_SIZE}" \
   "${QUANTIZATION_ARGS[@]}" \
   --max_samples "${SAMPLES}" \
   --seed 42
