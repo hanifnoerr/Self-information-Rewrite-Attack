@@ -12,13 +12,20 @@ def save_json(path, data):
         json.dump(data, output_file, indent=2, ensure_ascii=False)
 
 
+def count_nonempty_lines(path):
+    if not os.path.exists(path):
+        return 0
+    with open(path, "r", encoding="utf-8") as input_file:
+        return sum(1 for line in input_file if line.strip())
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run CoDA with every configured attack model.")
     parser.add_argument("--config_path", default="config/model_matrix_l4.json")
     parser.add_argument("--repo_dir", default="/content/Self-information-Rewrite-Attack")
     parser.add_argument("--input_path", required=True)
     parser.add_argument("--output_root", default="/content/sira_outputs")
-    parser.add_argument("--samples", type=int, default=10)
+    parser.add_argument("--samples", type=int, default=500)
     parser.add_argument("--threshold", type=int, default=30)
     args = parser.parse_args()
 
@@ -42,6 +49,14 @@ def main():
         print("\n" + "=" * 80)
         print(f"Checking and running CoDA: {model_run['display_name']}")
         print("=" * 80)
+
+        completed_samples = count_nonempty_lines(model_run["coda_path"])
+        if completed_samples >= args.samples:
+            model_run["access_status"] = "not_rechecked"
+            model_run["run_status"] = "completed"
+            print(f"Skipping completed CoDA output with {completed_samples} samples.")
+            save_json(status_path, model_runs)
+            continue
 
         try:
             hf_hub_download(model_name, "config.json")
@@ -94,11 +109,14 @@ def main():
                     stdout=log_file,
                     stderr=subprocess.STDOUT,
                 )
-            if os.path.exists(model_run["coda_path"]):
+            completed_samples = count_nonempty_lines(model_run["coda_path"])
+            if completed_samples >= args.samples:
                 model_run["run_status"] = "completed"
             else:
                 model_run["run_status"] = "failed"
-                model_run["run_error"] = "CoDA finished but the output file is missing."
+                model_run["run_error"] = (
+                    f"CoDA finished with {completed_samples} of {args.samples} samples."
+                )
         except subprocess.CalledProcessError as error:
             model_run["run_status"] = "failed"
             model_run["run_error"] = (

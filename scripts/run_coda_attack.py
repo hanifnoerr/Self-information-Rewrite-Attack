@@ -123,7 +123,7 @@ def main():
         choices=["auto", "causal", "multimodal", "processor_causal"],
         default="auto",
     )
-    parser.add_argument("--max_samples", type=int, default=10)
+    parser.add_argument("--max_samples", type=int, default=500)
     parser.add_argument("--max_new_tokens", type=int, default=256)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
@@ -148,8 +148,18 @@ def main():
         lines = lines[:args.max_samples]
 
     os.makedirs(os.path.dirname(args.output_path), exist_ok=True)
-    with open(args.output_path, "w", encoding="utf-8") as output_file:
-        for item_id, line in enumerate(tqdm(lines, desc="CoDA", unit="sample")):
+    completed_samples = 0
+    if os.path.exists(args.output_path):
+        with open(args.output_path, "r", encoding="utf-8") as output_file:
+            completed_samples = sum(1 for line in output_file if line.strip())
+        print(f"Resuming CoDA after {completed_samples} completed samples.")
+
+    with open(args.output_path, "a", encoding="utf-8") as output_file:
+        remaining_lines = lines[completed_samples:]
+        for item_id, line in enumerate(
+            tqdm(remaining_lines, desc="CoDA", unit="sample"),
+            start=completed_samples,
+        ):
             item = json.loads(line)
             watermarked_text = item["watermarked_text"]
 
@@ -197,6 +207,7 @@ def main():
                 "anchor_rate": len(anchor_indexes) / len(token_ids) if token_ids else 0.0,
             }
             output_file.write(json.dumps(result, ensure_ascii=False) + "\n")
+            output_file.flush()
 
     peak_memory = torch.cuda.max_memory_allocated() / (1024 ** 3) if torch.cuda.is_available() else 0
     print(f"CoDA output: {args.output_path}")

@@ -2,9 +2,9 @@
 set -euo pipefail
 
 REPO_DIR="/content/Self-information-Rewrite-Attack"
-OUTPUT_ROOT="/content/sira_outputs"
+OUTPUT_ROOT="${OUTPUT_ROOT:-/content/sira_outputs}"
 ALGORITHM="${ALGORITHM:-KGW}"
-SAMPLES="${SAMPLES:-10}"
+SAMPLES="${SAMPLES:-500}"
 GENERATION_MODEL="${GENERATION_MODEL:-facebook/opt-1.3b}"
 MODEL_NAME="${MODEL_NAME:?Set MODEL_NAME before running this script}"
 MODEL_LABEL="${MODEL_LABEL:?Set MODEL_LABEL before running this script}"
@@ -35,9 +35,15 @@ echo "Label=${MODEL_LABEL}, algorithm=${ALGORITHM}, samples=${SAMPLES}, load_in_
 
 echo "=== Stage 0: Generate shared watermarked data ==="
 WATERMARK_FILE="${WATERMARK_DIR}/${ALGORITHM}_response.json"
+WATERMARK_COUNT=0
 if [[ -f "${WATERMARK_FILE}" ]]; then
-  echo "Reusing shared watermarked data: ${WATERMARK_FILE}"
+  WATERMARK_COUNT="$(wc -l < "${WATERMARK_FILE}")"
+fi
+
+if (( WATERMARK_COUNT >= SAMPLES )); then
+  echo "Reusing ${WATERMARK_COUNT} completed watermarked samples."
 else
+  echo "Resuming watermarked data after ${WATERMARK_COUNT} samples."
   python scripts/generate_watermark.py \
     --algorithms "${ALGORITHM}" \
     --model_path "${GENERATION_MODEL}" \

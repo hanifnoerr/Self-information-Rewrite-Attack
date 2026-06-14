@@ -54,15 +54,12 @@ def evaluate_items(items, text_field, watermark, similarity_model):
     scores = []
     watermarked_flags = []
     failed_samples = 0
-    prefixed_samples = 0
 
     for item in items:
         text = item.get(text_field, "")
         if not text:
             failed_samples += 1
             continue
-        if text.startswith("student_id: 35571241"):
-            prefixed_samples += 1
 
         try:
             result = watermark.detect_watermark(text, return_dict=True)
@@ -84,7 +81,6 @@ def evaluate_items(items, text_field, watermark, similarity_model):
         "number_of_samples": len(items),
         "evaluated_samples": evaluated_samples,
         "failed_samples": failed_samples,
-        "student_id_prefix_rate": prefixed_samples / len(items) if items else None,
         "runtime_seconds": time.time() - start_time,
     }
 
@@ -140,7 +136,6 @@ def main():
     parser.add_argument("--watermarked_input", required=True)
     parser.add_argument("--models_config", required=True)
     parser.add_argument("--coda_models_config", default="")
-    parser.add_argument("--spia_input", default="")
     parser.add_argument("--output_root", default="/content/sira_outputs")
     parser.add_argument("--similarity_model", default="sentence-transformers/all-MiniLM-L6-v2")
     parser.add_argument("--dtype", choices=["auto", "fp16", "bf16"], default="auto")
@@ -256,36 +251,9 @@ def main():
         coda_records.append(coda_record)
         results.append(coda_record)
 
-    spia_record = None
-    spia_items = read_jsonl(args.spia_input, args.max_samples)
-    if spia_items:
-        print(f"Evaluating SPIA: {len(spia_items)} samples")
-        spia_result = evaluate_items(
-            spia_items,
-            "attack_text",
-            watermark,
-            similarity_model,
-        )
-        spia_record = {
-            "label": "spia",
-            "display_name": "SPIA - Student-ID Prefix Injection Attack",
-            "method_type": "SPIA",
-            "model_family": "N/A",
-            "model_name": "No rewrite model",
-            "parameter_size": "N/A",
-            "size_tier": "Proposed method",
-            "quantization": "N/A",
-            "attack_path": args.spia_input,
-            **spia_result,
-        }
-        results.append(spia_record)
-
     results_dir = os.path.join(args.output_root, "results")
     save_json(os.path.join(results_dir, "transfer_eval.json"), results)
     save_csv(os.path.join(results_dir, "transfer_eval.csv"), results)
-    if spia_record:
-        save_json(os.path.join(results_dir, "spia_eval.json"), spia_record)
-        save_csv(os.path.join(results_dir, "spia_eval.csv"), [spia_record])
     if coda_records:
         save_json(os.path.join(results_dir, "coda_eval.json"), coda_records)
         save_csv(os.path.join(results_dir, "coda_eval.csv"), coda_records)

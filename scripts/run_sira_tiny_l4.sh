@@ -2,9 +2,9 @@
 set -euo pipefail
 
 REPO_DIR="/content/Self-information-Rewrite-Attack"
-OUTPUT_ROOT="/content/sira_outputs"
+OUTPUT_ROOT="${OUTPUT_ROOT:-/content/sira_outputs}"
 ALGORITHM="${ALGORITHM:-KGW}"
-SAMPLES="${SAMPLES:-10}"
+SAMPLES="${SAMPLES:-500}"
 GENERATION_MODEL="${GENERATION_MODEL:-facebook/opt-1.3b}"
 ATTACK_MODEL="${TINY_MODEL:-meta-llama/Llama-3.2-3B-Instruct}"
 GENERATED_TOKENS="${GENERATED_TOKENS:-230}"
