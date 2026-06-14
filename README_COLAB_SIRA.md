@@ -1,24 +1,28 @@
 # SIRA and CoDA on Google Colab A100 or L4
 
-This workflow compares SIRA and CoDA on 500 shared KGW-watermarked C4
-responses using a Google Colab GPU. An A100 is recommended for the full run.
+This workflow compares SIRA and CoDA using three similarly sized 7-8B attack
+models on 500 shared KGW-watermarked C4 responses. An A100 is recommended.
 
 [Open the 500-sample notebook in Google Colab](https://colab.research.google.com/github/hanifnoerr/Self-information-Rewrite-Attack/blob/codex/browser-colab-l4/SIRA_COLAB_L4.ipynb)
 
 ## Experiment
 
-Both attacks run with the same six attack/rewrite models:
+Both attacks run with the same three attack/rewrite models:
 
-| Family | Small | Large |
+| Family | Attack model | Precision |
 |---|---|---|
-| Llama | Llama 3.2 3B, bf16 | Llama 3 8B, 4-bit |
-| Gemma 4 | Gemma 4 E2B, bf16 | Gemma 4 E4B, bf16 |
-| Qwen 2.5 | Qwen 2.5 3B, bf16 | Qwen 2.5 7B, 4-bit |
+| Llama | Llama 3 8B Instruct | bf16 |
+| Qwen | Qwen 2.5 7B Instruct | bf16 |
+| Mistral | Mistral 7B Instruct v0.3 | bf16 |
 
-This produces 12 attack rows:
+Mistral 7B Instruct v0.3 is the third model because it is a text-only causal
+model in the target size range, works with the existing Transformers loader,
+and uses an Apache-2.0 license.
 
-- 6 SIRA results;
-- 6 CoDA results.
+This produces six attack rows:
+
+- 3 SIRA results;
+- 3 CoDA results.
 
 The exact model names are stored in `config/model_matrix_l4.json`.
 
@@ -32,7 +36,7 @@ comparison controlled.
 2. Choose **Runtime > Change runtime type > A100 GPU**. Use L4 only when A100
    is unavailable.
 3. Add a Colab Secret named `HF_TOKEN`.
-4. Accept access for any gated Llama or Gemma checkpoints.
+4. Accept access for the gated Llama checkpoint.
 5. Run all cells from top to bottom.
 6. After the report is saved, use **Runtime > Disconnect and delete runtime**.
 
@@ -40,10 +44,13 @@ The notebook uses:
 
 ```python
 SAMPLES = 500
-BATCH_SIZE = 4
+BATCH_SIZE = 8
 RESET_OUTPUTS = False
-OUTPUT_ROOT = "/content/drive/MyDrive/sira_500_outputs"
+OUTPUT_ROOT = "/content/drive/MyDrive/sira_3model_outputs"
 ```
+
+The separate output directory prevents this controlled bf16 experiment from
+resuming or mixing outputs from the earlier six-model run.
 
 Outputs are written directly to Google Drive. Watermark generation, SIRA
 stages, and CoDA resume from existing completed lines. If Colab disconnects,
@@ -62,12 +69,12 @@ API, but it runs only once and is reused by every attack model.
 Start an A100 40GB run with:
 
 ```python
-BATCH_SIZE = 4
+BATCH_SIZE = 8
 ```
 
 After one model begins, inspect peak GPU memory in its log. If it stays below
-approximately 28GB, try `BATCH_SIZE = 8`. If CUDA reports out-of-memory, lower
-the value to `2` or `1` and re-run. Partial outputs resume automatically.
+approximately 28GB, try `BATCH_SIZE = 12`. If CUDA reports out-of-memory, lower
+the value to `4` or `2` and re-run. Partial outputs resume automatically.
 Choose the batch size that gives the best samples-per-second rate; completely
 filling VRAM is not itself the goal.
 
@@ -77,7 +84,7 @@ generation can occasionally vary with batching.
 
 ## Runtime Warning
 
-This is a large experiment. It runs 12 model-method combinations over 500
+This is a large experiment. It runs six model-method combinations over 500
 responses, plus SIRA's intermediate generation and self-information stages.
 It may require multiple Colab runtimes. The resume behavior is intentional.
 
@@ -88,7 +95,7 @@ browser notebook.
 
 ```bash
 colab sessions
-GPU_TYPE=A100 SESSION_NAME=sira-a100 SAMPLES=500 BATCH_SIZE=4 ALGORITHM=KGW \
+GPU_TYPE=A100 SESSION_NAME=sira-a100 SAMPLES=500 BATCH_SIZE=8 ALGORITHM=KGW \
   bash scripts/run_colab_l4_sira.sh
 ```
 
@@ -137,12 +144,12 @@ Run one CoDA model directly:
 
 ```bash
 python scripts/run_coda_attack.py \
-  --input_path /content/drive/MyDrive/sira_500_outputs/watermarked/KGW_response.json \
-  --output_path /content/drive/MyDrive/sira_500_outputs/coda_models/llama_3_2_3b/coda_attack.jsonl \
-  --model_name meta-llama/Llama-3.2-3B-Instruct \
+  --input_path /content/drive/MyDrive/sira_3model_outputs/watermarked/KGW_response.json \
+  --output_path /content/drive/MyDrive/sira_3model_outputs/coda_models/llama_3_8b/coda_attack.jsonl \
+  --model_name meta-llama/Meta-Llama-3-8B-Instruct \
   --threshold 30 \
   --dtype bf16 \
-  --batch_size 4 \
+  --batch_size 8 \
   --max_samples 500
 ```
 
@@ -152,35 +159,34 @@ Run the complete CoDA matrix:
 python scripts/run_coda_matrix_l4.py \
   --config_path /content/Self-information-Rewrite-Attack/config/model_matrix_l4.json \
   --repo_dir /content/Self-information-Rewrite-Attack \
-  --input_path /content/drive/MyDrive/sira_500_outputs/watermarked/KGW_response.json \
-  --output_root /content/drive/MyDrive/sira_500_outputs \
-  --batch_size 4 \
+  --input_path /content/drive/MyDrive/sira_3model_outputs/watermarked/KGW_response.json \
+  --output_root /content/drive/MyDrive/sira_3model_outputs \
+  --batch_size 8 \
   --samples 500
 ```
 
 ## Main Outputs
 
 ```text
-/content/drive/MyDrive/sira_500_outputs/model_runs.json
-/content/drive/MyDrive/sira_500_outputs/coda_model_runs.json
-/content/drive/MyDrive/sira_500_outputs/sira_models/<model-label>/final/KGW_attack.json
-/content/drive/MyDrive/sira_500_outputs/coda_models/<model-label>/coda_attack.jsonl
-/content/drive/MyDrive/sira_500_outputs/results/transfer_eval.json
-/content/drive/MyDrive/sira_500_outputs/results/transfer_eval.csv
-/content/drive/MyDrive/sira_500_outputs/results/coda_eval.json
-/content/drive/MyDrive/sira_500_outputs/results/coda_eval.csv
-/content/drive/MyDrive/sira_500_outputs/results/paper_style_comparison.json
-/content/drive/MyDrive/sira_500_outputs/results/paper_style_comparison.csv
-/content/drive/MyDrive/sira_500_outputs/final_report.md
+/content/drive/MyDrive/sira_3model_outputs/model_runs.json
+/content/drive/MyDrive/sira_3model_outputs/coda_model_runs.json
+/content/drive/MyDrive/sira_3model_outputs/sira_models/<model-label>/final/KGW_attack.json
+/content/drive/MyDrive/sira_3model_outputs/coda_models/<model-label>/coda_attack.jsonl
+/content/drive/MyDrive/sira_3model_outputs/results/transfer_eval.json
+/content/drive/MyDrive/sira_3model_outputs/results/transfer_eval.csv
+/content/drive/MyDrive/sira_3model_outputs/results/coda_eval.json
+/content/drive/MyDrive/sira_3model_outputs/results/coda_eval.csv
+/content/drive/MyDrive/sira_3model_outputs/results/paper_style_comparison.json
+/content/drive/MyDrive/sira_3model_outputs/results/paper_style_comparison.csv
+/content/drive/MyDrive/sira_3model_outputs/final_report.md
 ```
 
 ## Paper Comparison Caveats
 
-Only the Llama 3B and 8B SIRA rows have corresponding paper ASR values. Gemma,
-Qwen, and CoDA were not reported by the paper, so their
+Only the Llama 8B SIRA row has a corresponding paper ASR value. Qwen, Mistral,
+and CoDA were not reported by the paper, so their
 `paper_attack_success_rate` values remain blank.
 
 Using 500 samples matches the paper's sample count. The run is still not an
 exact reproduction when hardware, package versions, quantization, or batch size
-differs from the paper. The Llama 8B and Qwen 7B attack models currently use
-4-bit quantization.
+differs from the paper. All three attack models use bf16 in this experiment.

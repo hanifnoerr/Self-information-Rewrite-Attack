@@ -1,55 +1,11 @@
 [
   {
-    "label": "llama_3_2_3b",
-    "display_name": "Llama 3.2 3B Instruct",
-    "model_family": "Llama",
-    "model_name": "meta-llama/Llama-3.2-3B-Instruct",
-    "parameter_size": "3B",
-    "size_tier": "small",
-    "quantization": "bf16",
-    "load_in_4bit": false,
-    "loader_type": "causal"
-  },
-  {
     "label": "llama_3_8b",
     "display_name": "Llama 3 8B Instruct",
     "model_family": "Llama",
     "model_name": "meta-llama/Meta-Llama-3-8B-Instruct",
     "parameter_size": "8B",
-    "size_tier": "large",
-    "quantization": "4-bit NF4 with bf16 compute",
-    "load_in_4bit": true,
-    "loader_type": "causal"
-  },
-  {
-    "label": "gemma_4_e2b",
-    "display_name": "Gemma 4 E2B IT",
-    "model_family": "Gemma 4",
-    "model_name": "google/gemma-4-E2B-it",
-    "parameter_size": "E2B",
-    "size_tier": "small",
-    "quantization": "bf16",
-    "load_in_4bit": false,
-    "loader_type": "multimodal"
-  },
-  {
-    "label": "gemma_4_e4b",
-    "display_name": "Gemma 4 E4B IT",
-    "model_family": "Gemma 4",
-    "model_name": "google/gemma-4-E4B-it",
-    "parameter_size": "E4B",
-    "size_tier": "large",
-    "quantization": "bf16",
-    "load_in_4bit": false,
-    "loader_type": "multimodal"
-  },
-  {
-    "label": "qwen_2_5_3b",
-    "display_name": "Qwen 2.5 3B Instruct",
-    "model_family": "Qwen",
-    "model_name": "Qwen/Qwen2.5-3B-Instruct",
-    "parameter_size": "3B",
-    "size_tier": "small",
+    "size_tier": "7-8B",
     "quantization": "bf16",
     "load_in_4bit": false,
     "loader_type": "causal"
@@ -59,10 +15,21 @@
     "display_name": "Qwen 2.5 7B Instruct",
     "model_family": "Qwen",
     "model_name": "Qwen/Qwen2.5-7B-Instruct",
+    "parameter_size": "7.61B",
+    "size_tier": "7-8B",
+    "quantization": "bf16",
+    "load_in_4bit": false,
+    "loader_type": "causal"
+  },
+  {
+    "label": "mistral_7b_v0_3",
+    "display_name": "Mistral 7B Instruct v0.3",
+    "model_family": "Mistral",
+    "model_name": "mistralai/Mistral-7B-Instruct-v0.3",
     "parameter_size": "7B",
-    "size_tier": "large",
-    "quantization": "4-bit NF4 with bf16 compute",
-    "load_in_4bit": true,
+    "size_tier": "7-8B",
+    "quantization": "bf16",
+    "load_in_4bit": false,
     "loader_type": "causal"
   }
 ]
