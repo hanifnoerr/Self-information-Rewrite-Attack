@@ -51,11 +51,11 @@ Or you can used the merged script after data preparation:
 
 ```bash
 python attack_onestep.py \
-    --orig_input_dir /path/to/your/c4/watermarked/ \
-    --intermediate_dir /path/to/your/intermediate_results/ \
-    --final_output_dir /path/to/your/attack_results/ \
-    --paraphrase_model_path /path/to/your/paraphrase_and_blanking_model \
-    --attack_model_path /path/to/your/attack_model \
+    --orig_input_dir /path/to/c4/watermarked/ \
+    --intermediate_dir /path/to/intermediate_results/ \
+    --final_output_dir /path/to/attack_results/ \
+    --paraphrase_model_path /path/to/paraphrase_and_blanking_model \
+    --attack_model_path /path/to/attack_model \
     --threshold 30 \
     --gpu "0,1" \
     --algorithms "KGW"

@@ -327,7 +327,7 @@ def main():
         else:
             report.write("CoDA was not evaluated.\n\n")
 
-        report.write("## Honest Conclusion\n\n")
+        report.write("## Conclusion\n\n")
         measured_coda_rows = [
             row for row in coda_rows
             if row.get("attack_success_rate") is not None

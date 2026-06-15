@@ -3,7 +3,10 @@
 This workflow compares SIRA and CoDA using three similarly sized 7-8B attack
 models on 500 shared KGW-watermarked C4 responses. An A100 is recommended.
 
-[Open the 500-sample notebook in Google Colab](https://colab.research.google.com/github/hanifnoerr/Self-information-Rewrite-Attack/blob/codex/browser-colab-l4/SIRA_COLAB_L4.ipynb)
+[Open the completed 500-sample notebook in Google Colab](https://colab.research.google.com/github/hanifnoerr/Self-information-Rewrite-Attack/blob/codex/browser-colab-l4/SIRA_COLAB_L4.ipynb)
+
+The notebook includes the saved outputs and final comparison from the completed
+A100 run.
 
 ## Experiment
 
@@ -44,9 +47,9 @@ The notebook uses:
 
 ```python
 SAMPLES = 500
-BATCH_SIZE = 8
+BATCH_SIZE = 32
 RESET_OUTPUTS = False
-OUTPUT_ROOT = "/content/drive/MyDrive/sira_3model_outputs"
+OUTPUT_ROOT = "/content/drive/MyDrive/sira_3model_500_outputs"
 ```
 
 The separate output directory prevents this controlled bf16 experiment from
@@ -66,15 +69,14 @@ SIRA paraphrasing, SIRA rewriting, CoDA self-information scoring, and CoDA
 rewriting. Shared watermark generation still uses the official one-prompt-at-a-time
 API, but it runs only once and is reused by every attack model.
 
-Start an A100 40GB run with:
+The completed A100 40GB run used:
 
 ```python
-BATCH_SIZE = 8
+BATCH_SIZE = 32
 ```
 
-After one model begins, inspect peak GPU memory in its log. If it stays below
-approximately 28GB, try `BATCH_SIZE = 12`. If CUDA reports out-of-memory, lower
-the value to `4` or `2` and re-run. Partial outputs resume automatically.
+For different hardware, reduce the batch size if CUDA reports out-of-memory.
+Partial outputs resume automatically.
 Choose the batch size that gives the best samples-per-second rate; completely
 filling VRAM is not itself the goal.
 
@@ -95,7 +97,7 @@ browser notebook.
 
 ```bash
 colab sessions
-GPU_TYPE=A100 SESSION_NAME=sira-a100 SAMPLES=500 BATCH_SIZE=8 ALGORITHM=KGW \
+GPU_TYPE=A100 SESSION_NAME=sira-a100 SAMPLES=500 BATCH_SIZE=32 ALGORITHM=KGW \
   bash scripts/run_colab_l4_sira.sh
 ```
 
@@ -144,12 +146,12 @@ Run one CoDA model directly:
 
 ```bash
 python scripts/run_coda_attack.py \
-  --input_path /content/drive/MyDrive/sira_3model_outputs/watermarked/KGW_response.json \
-  --output_path /content/drive/MyDrive/sira_3model_outputs/coda_models/llama_3_8b/coda_attack.jsonl \
+  --input_path /content/drive/MyDrive/sira_3model_500_outputs/watermarked/KGW_response.json \
+  --output_path /content/drive/MyDrive/sira_3model_500_outputs/coda_models/llama_3_8b/coda_attack.jsonl \
   --model_name meta-llama/Meta-Llama-3-8B-Instruct \
   --threshold 30 \
   --dtype bf16 \
-  --batch_size 8 \
+  --batch_size 32 \
   --max_samples 500
 ```
 
@@ -159,26 +161,26 @@ Run the complete CoDA matrix:
 python scripts/run_coda_matrix_l4.py \
   --config_path /content/Self-information-Rewrite-Attack/config/model_matrix_l4.json \
   --repo_dir /content/Self-information-Rewrite-Attack \
-  --input_path /content/drive/MyDrive/sira_3model_outputs/watermarked/KGW_response.json \
-  --output_root /content/drive/MyDrive/sira_3model_outputs \
-  --batch_size 8 \
+  --input_path /content/drive/MyDrive/sira_3model_500_outputs/watermarked/KGW_response.json \
+  --output_root /content/drive/MyDrive/sira_3model_500_outputs \
+  --batch_size 32 \
   --samples 500
 ```
 
 ## Main Outputs
 
 ```text
-/content/drive/MyDrive/sira_3model_outputs/model_runs.json
-/content/drive/MyDrive/sira_3model_outputs/coda_model_runs.json
-/content/drive/MyDrive/sira_3model_outputs/sira_models/<model-label>/final/KGW_attack.json
-/content/drive/MyDrive/sira_3model_outputs/coda_models/<model-label>/coda_attack.jsonl
-/content/drive/MyDrive/sira_3model_outputs/results/transfer_eval.json
-/content/drive/MyDrive/sira_3model_outputs/results/transfer_eval.csv
-/content/drive/MyDrive/sira_3model_outputs/results/coda_eval.json
-/content/drive/MyDrive/sira_3model_outputs/results/coda_eval.csv
-/content/drive/MyDrive/sira_3model_outputs/results/paper_style_comparison.json
-/content/drive/MyDrive/sira_3model_outputs/results/paper_style_comparison.csv
-/content/drive/MyDrive/sira_3model_outputs/final_report.md
+/content/drive/MyDrive/sira_3model_500_outputs/model_runs.json
+/content/drive/MyDrive/sira_3model_500_outputs/coda_model_runs.json
+/content/drive/MyDrive/sira_3model_500_outputs/sira_models/<model-label>/final/KGW_attack.json
+/content/drive/MyDrive/sira_3model_500_outputs/coda_models/<model-label>/coda_attack.jsonl
+/content/drive/MyDrive/sira_3model_500_outputs/results/transfer_eval.json
+/content/drive/MyDrive/sira_3model_500_outputs/results/transfer_eval.csv
+/content/drive/MyDrive/sira_3model_500_outputs/results/coda_eval.json
+/content/drive/MyDrive/sira_3model_500_outputs/results/coda_eval.csv
+/content/drive/MyDrive/sira_3model_500_outputs/results/paper_style_comparison.json
+/content/drive/MyDrive/sira_3model_500_outputs/results/paper_style_comparison.csv
+/content/drive/MyDrive/sira_3model_500_outputs/final_report.md
 ```
 
 ## Paper Comparison Caveats
