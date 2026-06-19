@@ -183,6 +183,69 @@ python scripts/run_coda_matrix_l4.py \
 /content/drive/MyDrive/sira_3model_500_outputs/final_report.md
 ```
 
+## Result Visualization
+
+The saved outputs can be converted into an interactive HTML comparison and a
+PNG metrics figure:
+
+```bash
+python scripts/visualize_sira_results.py \
+  --output_root /path/to/sira_3model_500_outputs \
+  --sample_ids 0 100 200 300 400
+```
+
+The generator creates:
+
+```text
+sira_3model_500_outputs/visualization/index.html
+sira_3model_500_outputs/visualization/metrics_overview.png
+sira_3model_500_outputs/visualization/visualization_data.json
+```
+
+The dashboard includes:
+
+- attack success versus semantic similarity across the three models;
+- average KGW watermark score before and after SIRA;
+- SIRA versus the context-anchor baseline;
+- side-by-side watermarked and rewritten examples;
+- the masked intermediate text and reference paraphrase.
+
+SIRA masking is token-level rather than word-level. Depending on the attack
+model tokenizer, one word may be split into several subword tokens, and
+punctuation or leading spaces can be separate tokens. The masked intermediate
+therefore looks fragmented; it is an internal reconstruction input rather than
+natural-language output.
+
+### Exact KGW Red/Green Tokens
+
+KGW token colors depend on the tokenizer, secret key, preceding token, PyTorch
+random permutation, and accelerator path. Export the colors on the same A100
+runtime used for evaluation:
+
+```bash
+python scripts/export_kgw_token_colors.py \
+  --output_root /content/drive/MyDrive/sira_3model_500_outputs \
+  --sample_ids 0 100 200 300 400 \
+  --required_gpu_substring A100
+```
+
+Then rebuild the dashboard:
+
+```bash
+python scripts/visualize_sira_results.py \
+  --output_root /content/drive/MyDrive/sira_3model_500_outputs \
+  --sample_ids 0 100 200 300 400
+```
+
+When `visualization/kgw_token_colors.json` is present, the dashboard provides
+both views:
+
+- KGW green-list, red-list, and neutral prefix tokens;
+- lexical changes between the watermarked and rewritten text.
+
+Without the A100 export, the dashboard uses lexical-change highlighting and
+does not substitute a locally recomputed KGW partition.
+
 ## Paper Comparison Caveats
 
 Only the Llama 8B SIRA row has a corresponding paper ASR value. Qwen, Mistral,
